@@ -172,48 +172,59 @@ func (b *Board) String() string {
 	}
 	boardLines = append(boardLines, "     a    b    c    d    e    f    g    h")
 
-	// Add moves list to the right of the board
-	movesList := "        Moves:"
+	// Create moves list
+	var movesLines []string
 	if len(b.MovesPlayed) == 0 {
-		movesList += " (none)"
+		movesLines = []string{"Moves: (none)"}
 	} else {
+		movesLines = append(movesLines, "Moves:")
 		for i := 0; i < len(b.MovesPlayed); i += 2 {
 			moveNum := (i / 2) + 1
-			// Use a consistent width for the move number to ensure alignment
-			if i == 0 {
-				movesList += fmt.Sprintf("\n           %d. %-6s", moveNum, b.MovesPlayed[i])
-			} else {
-				movesList += fmt.Sprintf("\n           %d. %-6s", moveNum, b.MovesPlayed[i])
-			}
+			moveLine := fmt.Sprintf("  %d. %-8s", moveNum, b.MovesPlayed[i])
 			if i+1 < len(b.MovesPlayed) {
-				movesList += fmt.Sprintf("%-6s", b.MovesPlayed[i+1])
+				moveLine += fmt.Sprintf("%-8s", b.MovesPlayed[i+1])
 			}
+			movesLines = append(movesLines, moveLine)
 		}
 	}
 
-	// Combine board and moves list side by side
-	movesLines := strings.Split(movesList, "\n")
+	// Combine board and moves list side by side with proper spacing
 	maxLines := len(boardLines)
 	if len(movesLines) > maxLines {
 		maxLines = len(movesLines)
 	}
 
-	// Combine lines
-	for i := 0; i < maxLines; i++ {
-		if i < len(boardLines) {
-			result += boardLines[i]
-		}
+	// Add the board lines first
+	for i := 0; i < len(boardLines); i++ {
+		result += boardLines[i]
+		// Add moves on the right side with proper spacing
 		if i < len(movesLines) {
-			result += movesLines[i]
+			// Add enough spaces to align moves to the right of the board
+			padding := 55 - len(boardLines[i]) // Adjust padding based on board width
+			if padding < 0 {
+				padding = 2
+			}
+			result += strings.Repeat(" ", padding) + movesLines[i]
 		}
 		result += "\n"
 	}
 
-	// Add whose move it is
+	// Add any remaining moves lines if there are more moves than board lines
+	for i := len(boardLines); i < len(movesLines); i++ {
+		result += strings.Repeat(" ", 55) + movesLines[i] + "\n"
+	}
+
+	// Add whose move it is and check status
 	if b.WhiteToMove {
 		result += "\nWhite to move"
+		if b.isInCheck(true) {
+			result += " - CHECK!"
+		}
 	} else {
 		result += "\nBlack to move"
+		if b.isInCheck(false) {
+			result += " - CHECK!"
+		}
 	}
 	return result
 }

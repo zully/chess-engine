@@ -48,8 +48,6 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 
 		// For captures, look one square diagonally back
 		if move.Capture {
-			fmt.Printf("DEBUG: Looking for pawn capture from file %c\n", 'a'+fromFile)
-
 			// Get the rank for the capturing pawn
 			if !isWhite {
 				fromRank = targetRank - 1 // Black capturing pawn must be one rank higher
@@ -61,9 +59,7 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 				return "", fmt.Errorf("invalid source square: rank %d, file %d out of bounds", fromRank, fromFile)
 			}
 
-			fmt.Printf("DEBUG: Checking for capturing pawn at rank %d, file %d (looking for %s)\n", fromRank, fromFile, PieceToString(expectedPiece))
 			piece := b.GetPiece(fromRank, fromFile)
-			fmt.Printf("DEBUG: Found piece: %s\n", PieceToString(piece))
 			if piece == expectedPiece && canPawnMove(b, fromRank, fromFile, targetRank, targetFile, move.Capture) {
 				return GetSquareName(fromRank, fromFile), nil
 			}
@@ -218,25 +214,17 @@ func (b *Board) MakeMove(notation string) error {
 		return err
 	}
 
-	// Check if we're in check before the move
-	if b.isInCheck(b.WhiteToMove) {
-		fmt.Printf("DEBUG: King is in check\n")
-	}
-
 	// Get ranks and files for validation
 	startRank, startFile := 0, 0
 	if move.From != "" {
 		if move.From[len(move.From)-1] == '*' {
 			// Pawn capture - we know the file but need to find the rank
 			startFile = int(move.From[0] - 'a')
-			fmt.Printf("DEBUG: From square %s -> file %d (rank to be determined)\n", move.From, startFile)
 		} else {
 			startRank, startFile = getSquareCoords(move.From)
-			fmt.Printf("DEBUG: From square %s -> rank %d, file %d\n", move.From, startRank, startFile)
 		}
 	}
 	endRank, endFile := getSquareCoords(move.To)
-	fmt.Printf("DEBUG: To square %s -> rank %d, file %d\n", move.To, endRank, endFile)
 
 	// If the from square isn't specified or contains wildcard (for piece moves and pawn captures), find it
 	if move.From == "" || strings.Contains(move.From, "*") {
@@ -317,6 +305,15 @@ func (b *Board) MakeMove(notation string) error {
 
 	// Switch turns
 	b.WhiteToMove = !b.WhiteToMove
+
+	// Check if the opponent is in check after this move
+	if b.isInCheck(b.WhiteToMove) {
+		if b.WhiteToMove {
+			fmt.Println("White is in check!")
+		} else {
+			fmt.Println("Black is in check!")
+		}
+	}
 
 	return nil
 }

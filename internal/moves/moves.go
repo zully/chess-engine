@@ -19,7 +19,6 @@ type Move struct {
 
 // ParseAlgebraic converts a move in algebraic notation to a Move struct
 func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
-	fmt.Printf("DEBUG: Parsing move: %q\n", notation)
 	move := &Move{}
 
 	// Handle castling
@@ -49,7 +48,6 @@ func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
 	}
 
 	notation = strings.TrimRight(notation, "+#") // Remove check/mate symbols
-	fmt.Printf("DEBUG: After trim: %q\n", notation)
 
 	// Handle pawn moves (e.g., "e4", "exd5")
 	if len(notation) >= 2 && !isUpperCase(notation[0]) {
@@ -71,7 +69,6 @@ func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
 
 	// Handle piece moves (e.g., "Nf3", "Bxe4")
 	if len(notation) >= 3 {
-		fmt.Printf("DEBUG: Parsing piece move: %q\n", notation)
 		move.Piece = string(notation[0])
 		idx := 1
 
@@ -83,18 +80,14 @@ func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
 
 		// Get the target square
 		to := notation[len(notation)-2:]
-		fmt.Printf("DEBUG: Target square: %q\n", to)
 
 		// Validate the target square notation
 		if len(to) != 2 ||
 			to[0] < 'a' || to[0] > 'h' ||
 			to[1] < '1' || to[1] > '8' {
-			fmt.Printf("DEBUG: Invalid target square - len: %d, file: %c, rank: %c\n", len(to), to[0], to[1])
 			return nil, fmt.Errorf("invalid target square: %q", to)
 		}
-		fmt.Printf("DEBUG: Setting target square: %q\n", to)
 		move.To = to
-		fmt.Printf("DEBUG: Move struct: %+v\n", move)
 		return move, nil
 	}
 

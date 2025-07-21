@@ -1,16 +1,11 @@
 package board
 
-import "fmt"
-
 // Movement validation functions
 
 // canPawnMove checks if a pawn can make the given move
 func canPawnMove(b *Board, fromRank, fromFile, toRank, toFile int, isCapture bool) bool {
 	piece := b.GetPiece(fromRank, fromFile)
 	isWhite := piece < BP
-
-	fmt.Printf("DEBUG: canPawnMove: fromRank=%d, fromFile=%d, toRank=%d, toFile=%d, isCapture=%v, isWhite=%v\n",
-		fromRank, fromFile, toRank, toFile, isCapture, isWhite)
 
 	// Get direction - white moves up the board (-1 in rank), black moves down (+1 in rank)
 	direction := -1              // White moves up the board (rank decreases)
@@ -20,24 +15,18 @@ func canPawnMove(b *Board, fromRank, fromFile, toRank, toFile int, isCapture boo
 		isStartRank = fromRank == 1 // Black pawns start on rank 7 (index 1)
 	}
 
-	fmt.Printf("DEBUG: Pawn direction=%d, isStartRank=%v\n", direction, isStartRank)
-
 	if isCapture {
 		// Pawn captures move one square diagonally
 		rankDiff := toRank - fromRank
 		fileDiff := abs(toFile - fromFile)
-		fmt.Printf("DEBUG: Pawn capture from (%d,%d) to (%d,%d), direction %d\n", fromRank, fromFile, toRank, toFile, direction)
-		fmt.Printf("DEBUG: Pawn isWhite=%v, rankDiff=%d, fileDiff=%d\n", isWhite, rankDiff, fileDiff)
 
 		// Must move one square diagonally forward
 		if fileDiff != 1 || rankDiff != direction {
-			fmt.Printf("DEBUG: Invalid capture: fileDiff=%d, rankDiff=%d, expected direction %d\n", fileDiff, rankDiff, direction)
 			return false
 		}
 
 		// Must capture an enemy piece (TODO: add en passant)
 		targetPiece := b.GetPiece(toRank, toFile)
-		fmt.Printf("DEBUG: Target piece: %s\n", PieceToString(targetPiece))
 		// Check if target piece is enemy: white captures black (targetPiece >= BP), black captures white (targetPiece < BP)
 		isTargetEnemy := (isWhite && targetPiece >= BP) || (!isWhite && targetPiece < BP)
 		return targetPiece != Empty && isTargetEnemy

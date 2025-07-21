@@ -1,7 +1,5 @@
 package board
 
-import "fmt"
-
 // getSquareCoords converts algebraic notation (e.g., "e4") to rank and file (0-7)
 // The board is indexed with white at the bottom (rank 1-8) and files a-h from left to right.
 func getSquareCoords(square string) (rank int, file int) {
@@ -29,7 +27,6 @@ func getSquareCoords(square string) (rank int, file int) {
 		return -1, -1
 	}
 
-	fmt.Printf("DEBUG: Converting %s to rank %d, file %d\n", square, rank, file)
 	return rank, file
 }
 
