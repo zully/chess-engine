@@ -73,8 +73,8 @@ func PieceToString(piece int) string {
 	}
 }
 
-// getSquareName returns the algebraic notation for a square given its rank and file
-func getSquareName(rank, file int) string {
+// GetSquareName returns the algebraic notation for a square given its rank and file
+func GetSquareName(rank, file int) string {
 	files := "abcdefgh"
 	ranks := "12345678" // our board has rank 0 at the black side (8th rank)
 	return string(files[file]) + string(ranks[7-rank])
@@ -94,7 +94,7 @@ func NewBoard() *Board {
 	// Initialize all squares with their names
 	for rank := 0; rank < 8; rank++ {
 		for file := 0; file < 8; file++ {
-			b.Squares[rank][file].Name = getSquareName(rank, file)
+			b.Squares[rank][file].Name = GetSquareName(rank, file)
 		}
 	}
 
@@ -146,18 +146,47 @@ func (b *Board) GetPiece(rank, file int) int {
 
 // GetSquare returns the square at the given algebraic notation (e.g., "e4")
 func (b *Board) GetSquare(algebraicNotation string) *Square {
-	if len(algebraicNotation) != 2 {
+	rank, file := getSquareCoords(algebraicNotation)
+	if rank < 0 || file < 0 || rank > 7 || file > 7 {
 		return nil
 	}
-
-	file := int(algebraicNotation[0] - 'a')
-	rank := 8 - int(algebraicNotation[1]-'0')
-
-	if file < 0 || file > 7 || rank < 0 || rank > 7 {
-		return nil
-	}
-
 	return &b.Squares[rank][file]
+}
+
+// getSquareCoords converts algebraic notation (e.g., "e4") to rank and file (0-7)
+// The board is indexed with white at the bottom (rank 1-8) and files a-h from left to right.
+func getSquareCoords(square string) (rank, file int) {
+	if len(square) < 1 {
+		return -1, -1
+	}
+
+	// Handle file
+	file = int(square[0] - 'a')
+	if file < 0 || file > 7 {
+		return -1, -1
+	}
+
+	// Handle rank
+	if len(square) == 2 {
+		if square[1] < '1' || square[1] > '8' {
+			return -1, -1
+		}
+		rank = 7 - (int(square[1] - '1')) // Convert '4' to array index 4 from bottom (7-3=4)
+	} else if len(square) > 2 && square[1] == '*' {
+		rank = -1 // Special value indicating any rank
+	} else {
+		return -1, -1
+	}
+
+	fmt.Printf("DEBUG: Converting %s to rank %d, file %d\n", square, rank, file)
+	return rank, file
+}
+
+// GetSquareName returns the algebraic notation for a square given its rank and file
+func GetSquareName(rank, file int) string {
+	files := "abcdefgh"
+	ranks := "12345678"
+	return string(files[file]) + string(ranks[7-rank])
 }
 
 // IsSquareEmpty returns true if the given square is empty

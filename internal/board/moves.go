@@ -64,7 +64,7 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 			piece := b.GetPiece(fromRank, fromFile)
 			fmt.Printf("DEBUG: Found piece: %s\n", PieceToString(piece))
 			if piece == expectedPiece && canPawnMove(b, fromRank, fromFile, targetRank, targetFile, move.Capture) {
-				return getSquareName(fromRank, fromFile), nil
+				return GetSquareName(fromRank, fromFile), nil
 			}
 		} else {
 			// For normal pawn moves, try one square back first
@@ -77,7 +77,7 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 			if fromRank >= 0 && fromRank <= 7 {
 				piece := b.GetPiece(fromRank, fromFile)
 				if piece == expectedPiece && canPawnMove(b, fromRank, fromFile, targetRank, targetFile, false) {
-					return getSquareName(fromRank, fromFile), nil
+					return GetSquareName(fromRank, fromFile), nil
 				}
 			}
 
@@ -91,7 +91,7 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 			if fromRank >= 0 && fromRank <= 7 {
 				piece := b.GetPiece(fromRank, fromFile)
 				if piece == expectedPiece && canPawnMove(b, fromRank, fromFile, targetRank, targetFile, false) {
-					return getSquareName(fromRank, fromFile), nil
+					return GetSquareName(fromRank, fromFile), nil
 				}
 			}
 		}
