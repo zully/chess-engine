@@ -13,6 +13,7 @@ type Move struct {
 	Capture   bool   // Whether the move is a capture
 	Promote   string // Promotion piece (if any)
 	Castle    string // "O-O" for kingside, "O-O-O" for queenside
+	EnPassant bool   // Whether this is an en passant capture
 	Check     bool   // Whether the move gives check
 	Checkmate bool   // Whether the move gives checkmate
 }
@@ -49,21 +50,44 @@ func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
 
 	notation = strings.TrimRight(notation, "+#") // Remove check/mate symbols
 
-	// Handle pawn moves (e.g., "e4", "exd5")
+	// Handle pawn moves (e.g., "e4", "exd5", "a1=Q", "exd8=Q")
 	if len(notation) >= 2 && !isUpperCase(notation[0]) {
 		file := notation[0]
-		if len(notation) == 2 { // Simple pawn move (e.g., "e4")
+
+		// Check for promotion notation
+		var promotionPiece string
+		if strings.Contains(notation, "=") {
+			parts := strings.Split(notation, "=")
+			notation = parts[0]
+			if len(parts) > 1 && len(parts[1]) > 0 {
+				promotionPiece = string(parts[1][0])
+			}
+		} else if len(notation) >= 3 && isUpperCase(notation[len(notation)-1]) {
+			// Handle promotion without = (e.g., "a1Q")
+			promotionPiece = string(notation[len(notation)-1])
+			notation = notation[:len(notation)-1]
+		}
+
+		if len(notation) == 2 { // Simple pawn move (e.g., "e4", "a1=Q")
 			rank := notation[1]
 			move.To = string(file) + string(rank)
 			// For pawn moves, let the board find the right starting square
 			move.From = ""
-		} else if len(notation) == 4 && notation[1] == 'x' { // Pawn capture (e.g., "exd5")
+		} else if len(notation) == 4 && notation[1] == 'x' { // Pawn capture (e.g., "exd5", "exd8=Q")
 			move.Capture = true
 			move.To = string(notation[2]) + string(notation[3])
 			// For pawn captures, specify the file but let the board find the rank
 			move.From = string(file) + "*"
+		} else if len(notation) >= 5 && notation[1] == 'x' && len(promotionPiece) > 0 { // Pawn capture with promotion (e.g., "exd8=Q")
+			move.Capture = true
+			move.To = string(notation[2]) + string(notation[3])
+			move.From = string(file) + "*"
 		}
+
 		move.Piece = "P"
+		if promotionPiece != "" {
+			move.Promote = promotionPiece
+		}
 		return move, nil
 	}
 

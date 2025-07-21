@@ -239,14 +239,14 @@ func (b *Board) MakeMove(notation string) error {
 	isValid := false
 
 	// First check if the move would get us out of check
-	if b.isInCheck(b.WhiteToMove) {
+	if b.IsInCheck(b.WhiteToMove) {
 		// Try the move temporarily
 		oldFromPiece := fromSquare.Piece
 		oldToPiece := toSquare.Piece
 		toSquare.Piece = fromSquare.Piece
 		fromSquare.Piece = Empty
 
-		stillInCheck := b.isInCheck(b.WhiteToMove)
+		stillInCheck := b.IsInCheck(b.WhiteToMove)
 
 		// Undo the temporary move
 		fromSquare.Piece = oldFromPiece
@@ -269,7 +269,12 @@ func (b *Board) MakeMove(notation string) error {
 	case WQ, BQ:
 		isValid = canQueenMove(b, startRank, startFile, endRank, endFile)
 	case WK, BK:
-		isValid = canKingMove(startRank, startFile, endRank, endFile)
+		// Handle castling moves specially
+		if move.Castle != "" {
+			isValid = b.canCastle(move.Castle, b.WhiteToMove)
+		} else {
+			isValid = canKingMove(startRank, startFile, endRank, endFile)
+		}
 	default:
 		return fmt.Errorf("invalid piece")
 	}
@@ -278,27 +283,114 @@ func (b *Board) MakeMove(notation string) error {
 		return fmt.Errorf("illegal move for %s: %s", move.Piece, notation)
 	}
 
-	// Make the move
-	toSquare.Piece = fromSquare.Piece
-	fromSquare.Piece = Empty
+	// Clear en passant target from previous move
+	b.EnPassant = ""
+
+	// Handle castling moves specially
+	if move.Castle != "" {
+		b.executeCastling(move.Castle, b.WhiteToMove)
+	} else {
+		// Check for en passant capture before making the move
+		isEnPassantCapture := move.EnPassant || (move.Piece == "P" && move.Capture && toSquare.Piece == Empty)
+
+		// Make the move
+		toSquare.Piece = fromSquare.Piece
+		fromSquare.Piece = Empty
+
+		// Handle en passant capture - remove the captured pawn
+		if isEnPassantCapture {
+			capturedPawnRank := endRank
+			if b.WhiteToMove {
+				capturedPawnRank = endRank + 1 // White captures black pawn one rank below
+			} else {
+				capturedPawnRank = endRank - 1 // Black captures white pawn one rank above
+			}
+			capturedPawnSquare := b.GetSquareByCoords(capturedPawnRank, endFile)
+			if capturedPawnSquare != nil {
+				capturedPawnSquare.Piece = Empty
+			}
+		}
+
+		// Check for pawn two-square move to set en passant target
+		if move.Piece == "P" && abs(endRank-startRank) == 2 {
+			// Set en passant target square (the square the pawn passed over)
+			targetRank := (startRank + endRank) / 2
+			b.EnPassant = GetSquareName(targetRank, endFile)
+		}
+
+		// Check for pawn promotion
+		if (toSquare.Piece == WP && endRank == 0) || (toSquare.Piece == BP && endRank == 7) {
+			// Determine promotion piece (default to Queen if not specified)
+			promotionPiece := move.Promote
+			if promotionPiece == "" {
+				promotionPiece = "Q" // Default to Queen
+			}
+
+			// Apply the promotion
+			isWhitePiece := toSquare.Piece == WP
+			switch promotionPiece {
+			case "Q":
+				if isWhitePiece {
+					toSquare.Piece = WQ
+				} else {
+					toSquare.Piece = BQ
+				}
+			case "R":
+				if isWhitePiece {
+					toSquare.Piece = WR
+				} else {
+					toSquare.Piece = BR
+				}
+			case "B":
+				if isWhitePiece {
+					toSquare.Piece = WB
+				} else {
+					toSquare.Piece = BB
+				}
+			case "N":
+				if isWhitePiece {
+					toSquare.Piece = WN
+				} else {
+					toSquare.Piece = BN
+				}
+			default:
+				// Fallback to Queen for invalid promotion pieces
+				if isWhitePiece {
+					toSquare.Piece = WQ
+				} else {
+					toSquare.Piece = BQ
+				}
+				promotionPiece = "Q"
+			}
+			// Add promotion notation only if not already present
+			if !strings.Contains(notation, "=") {
+				notation += "=" + promotionPiece
+			}
+			fmt.Printf("Pawn promoted to %s!\n", promotionPiece)
+		}
+	}
 
 	// Switch turns
 	b.WhiteToMove = !b.WhiteToMove
 
 	// Check if the opponent is in check after this move
-	if b.isInCheck(b.WhiteToMove) {
+	if b.IsInCheck(b.WhiteToMove) {
 		// Check if it's checkmate
-		if b.isCheckmate(b.WhiteToMove) {
-			// Add checkmate notation
-			notation += "#"
+		if b.IsCheckmate(b.WhiteToMove) {
+			// Add checkmate notation only if not already present
+			if !strings.Contains(notation, "#") && !strings.Contains(notation, "+") {
+				notation += "#"
+			}
 			if b.WhiteToMove {
 				fmt.Println("Checkmate! White is checkmated!")
 			} else {
 				fmt.Println("Checkmate! Black is checkmated!")
 			}
 		} else {
-			// Add check notation
-			notation += "+"
+			// Add check notation only if not already present
+			if !strings.Contains(notation, "+") && !strings.Contains(notation, "#") {
+				notation += "+"
+			}
 			if b.WhiteToMove {
 				fmt.Println("White is in check!")
 			} else {
@@ -311,4 +403,123 @@ func (b *Board) MakeMove(notation string) error {
 	b.MovesPlayed = append(b.MovesPlayed, notation)
 
 	return nil
+}
+
+// canCastle checks if the specified castling move is legal
+func (b *Board) canCastle(castleType string, isWhite bool) bool {
+	// Check if king is currently in check (can't castle out of check)
+	if b.IsInCheck(isWhite) {
+		return false
+	}
+
+	var kingRank, rookRank int
+	var kingFromFile, kingToFile, rookFromFile int
+
+	if isWhite {
+		kingRank = 7 // White king on rank 1 (index 7)
+		rookRank = 7 // White rooks on rank 1 (index 7)
+	} else {
+		kingRank = 0 // Black king on rank 8 (index 0)
+		rookRank = 0 // Black rooks on rank 8 (index 0)
+	}
+
+	// Set file positions based on castle type
+	if castleType == "O-O" {
+		// Kingside castling
+		kingFromFile = 4 // e-file
+		kingToFile = 6   // g-file
+		rookFromFile = 7 // h-file
+	} else if castleType == "O-O-O" {
+		// Queenside castling
+		kingFromFile = 4 // e-file
+		kingToFile = 2   // c-file
+		rookFromFile = 0 // a-file
+	} else {
+		return false
+	}
+
+	// Check that king and rook are in correct positions
+	expectedKing := WK
+	expectedRook := WR
+	if !isWhite {
+		expectedKing = BK
+		expectedRook = BR
+	}
+
+	if b.GetPiece(kingRank, kingFromFile) != expectedKing {
+		return false
+	}
+	if b.GetPiece(rookRank, rookFromFile) != expectedRook {
+		return false
+	}
+
+	// Check that squares between king and rook are empty
+	minFile := kingFromFile
+	maxFile := rookFromFile
+	if minFile > maxFile {
+		minFile, maxFile = maxFile, minFile
+	}
+
+	for file := minFile + 1; file < maxFile; file++ {
+		if !b.IsSquareEmpty(kingRank, file) {
+			return false
+		}
+	}
+
+	// Check that king doesn't pass through check
+	// King moves from kingFromFile to kingToFile, check each square
+	minFile = kingFromFile
+	maxFile = kingToFile
+	if minFile > maxFile {
+		minFile, maxFile = maxFile, minFile
+	}
+
+	for file := minFile; file <= maxFile; file++ {
+		if b.isSquareAttacked(kingRank, file, !isWhite) {
+			return false
+		}
+	}
+
+	// TODO: Check castling rights (for now, assume castling is allowed if pieces are in position)
+
+	return true
+}
+
+// executeCastling performs the castling move (moves both king and rook)
+func (b *Board) executeCastling(castleType string, isWhite bool) {
+	var kingRank, rookRank int
+	var kingFromFile, kingToFile, rookFromFile, rookToFile int
+
+	if isWhite {
+		kingRank = 7 // White king on rank 1 (index 7)
+		rookRank = 7 // White rooks on rank 1 (index 7)
+	} else {
+		kingRank = 0 // Black king on rank 8 (index 0)
+		rookRank = 0 // Black rooks on rank 8 (index 0)
+	}
+
+	// Set file positions based on castle type
+	if castleType == "O-O" {
+		// Kingside castling
+		kingFromFile = 4 // e-file
+		kingToFile = 6   // g-file
+		rookFromFile = 7 // h-file
+		rookToFile = 5   // f-file
+	} else { // "O-O-O"
+		// Queenside castling
+		kingFromFile = 4 // e-file
+		kingToFile = 2   // c-file
+		rookFromFile = 0 // a-file
+		rookToFile = 3   // d-file
+	}
+
+	// Move the king
+	kingPiece := b.GetPiece(kingRank, kingFromFile)
+	b.Squares[kingRank][kingFromFile].Piece = Empty
+	b.Squares[kingRank][kingToFile].Piece = kingPiece
+
+	// Move the rook
+	rookPiece := b.GetPiece(rookRank, rookFromFile)
+	b.Squares[rookRank][rookFromFile].Piece = Empty
+	b.Squares[rookRank][rookToFile].Piece = rookPiece
 }

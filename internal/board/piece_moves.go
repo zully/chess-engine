@@ -25,11 +25,34 @@ func canPawnMove(b *Board, fromRank, fromFile, toRank, toFile int, isCapture boo
 			return false
 		}
 
-		// Must capture an enemy piece (TODO: add en passant)
+		// Must capture an enemy piece or be an en passant capture
 		targetPiece := b.GetPiece(toRank, toFile)
-		// Check if target piece is enemy: white captures black (targetPiece >= BP), black captures white (targetPiece < BP)
+
+		// Check for normal capture
 		isTargetEnemy := (isWhite && targetPiece >= BP) || (!isWhite && targetPiece < BP)
-		return targetPiece != Empty && isTargetEnemy
+		if targetPiece != Empty && isTargetEnemy {
+			return true
+		}
+
+		// Check for en passant capture
+		targetSquareName := GetSquareName(toRank, toFile)
+		if b.EnPassant == targetSquareName {
+			// Verify there's an enemy pawn to capture
+			capturedPawnRank := toRank
+			if isWhite {
+				capturedPawnRank = toRank + 1 // White captures black pawn one rank below
+			} else {
+				capturedPawnRank = toRank - 1 // Black captures white pawn one rank above
+			}
+			capturedPiece := b.GetPiece(capturedPawnRank, toFile)
+			expectedEnemyPawn := BP
+			if !isWhite {
+				expectedEnemyPawn = WP
+			}
+			return capturedPiece == expectedEnemyPawn
+		}
+
+		return false
 	}
 
 	// Regular pawn move - must stay in the same file
@@ -240,16 +263,16 @@ func (b *Board) isSquareAttacked(rank, file int, attackerIsWhite bool) bool {
 	return false
 }
 
-// isInCheck returns true if the specified color's king is in check
-func (b *Board) isInCheck(isWhite bool) bool {
+// IsInCheck returns true if the specified color's king is in check
+func (b *Board) IsInCheck(isWhite bool) bool {
 	kingRank, kingFile := b.findKing(isWhite)
 	return b.isSquareAttacked(kingRank, kingFile, !isWhite)
 }
 
-// isCheckmate returns true if the specified color is in checkmate
-func (b *Board) isCheckmate(isWhite bool) bool {
+// IsCheckmate returns true if the specified color is in checkmate
+func (b *Board) IsCheckmate(isWhite bool) bool {
 	// First, the king must be in check
-	if !b.isInCheck(isWhite) {
+	if !b.IsInCheck(isWhite) {
 		return false
 	}
 
@@ -310,7 +333,7 @@ func (b *Board) isCheckmate(isWhite bool) bool {
 					b.Squares[fromRank][fromFile].Piece = Empty
 
 					// Check if the king is still in check after this move
-					stillInCheck := b.isInCheck(isWhite)
+					stillInCheck := b.IsInCheck(isWhite)
 
 					// Undo the move
 					b.Squares[fromRank][fromFile].Piece = piece

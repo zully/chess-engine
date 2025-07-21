@@ -146,6 +146,14 @@ func (b *Board) GetSquare(algebraicNotation string) *Square {
 	return &b.Squares[rank][file]
 }
 
+// GetSquareByCoords returns the square at the given rank and file coordinates
+func (b *Board) GetSquareByCoords(rank, file int) *Square {
+	if rank < 0 || file < 0 || rank > 7 || file > 7 {
+		return nil
+	}
+	return &b.Squares[rank][file]
+}
+
 // IsSquareEmpty returns true if the given square is empty
 func (b *Board) IsSquareEmpty(rank, file int) bool {
 	return b.GetPiece(rank, file) == Empty
@@ -217,8 +225,8 @@ func (b *Board) String() string {
 	// Add whose move it is and check status
 	if b.WhiteToMove {
 		result += "\nWhite to move"
-		if b.isInCheck(true) {
-			if b.isCheckmate(true) {
+		if b.IsInCheck(true) {
+			if b.IsCheckmate(true) {
 				result += " - CHECKMATE!"
 			} else {
 				result += " - CHECK!"
@@ -226,8 +234,8 @@ func (b *Board) String() string {
 		}
 	} else {
 		result += "\nBlack to move"
-		if b.isInCheck(false) {
-			if b.isCheckmate(false) {
+		if b.IsInCheck(false) {
+			if b.IsCheckmate(false) {
 				result += " - CHECKMATE!"
 			} else {
 				result += " - CHECK!"

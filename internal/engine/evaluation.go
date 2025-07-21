@@ -102,6 +102,12 @@ func Evaluate(b *board.Board) int {
 	// Position evaluation
 	score += evaluatePosition(b)
 
+	// King safety evaluation (critical for avoiding checkmate)
+	score += evaluateKingSafety(b)
+
+	// Mobility evaluation (piece activity)
+	score += evaluateMobility(b)
+
 	// Adjust score based on whose turn it is
 	if !b.WhiteToMove {
 		score = -score
@@ -232,4 +238,108 @@ func evaluatePosition(b *board.Board) int {
 	}
 
 	return score
+}
+
+// evaluateKingSafety penalizes exposed kings and rewards safe king positions
+func evaluateKingSafety(b *board.Board) int {
+	score := 0
+	isEnd := isEndgame(b)
+
+	// Find kings by scanning the board
+	whiteKingRank, whiteKingFile := findKing(b, true)
+	blackKingRank, blackKingFile := findKing(b, false)
+
+	if whiteKingRank == -1 || blackKingRank == -1 {
+		return 0 // Invalid position
+	}
+
+	if !isEnd {
+		// Middlegame: reward keeping king safe
+		score += evaluateKingPosition(b, whiteKingRank, whiteKingFile, true)
+		score -= evaluateKingPosition(b, blackKingRank, blackKingFile, false)
+	} else {
+		// Endgame: prevent mating patterns, avoid edges when under attack
+		score += evaluateEndgameKingPosition(b, whiteKingRank, whiteKingFile, true)
+		score -= evaluateEndgameKingPosition(b, blackKingRank, blackKingFile, false)
+	}
+
+	return score
+}
+
+// findKing locates the king of the specified color
+func findKing(b *board.Board, isWhite bool) (int, int) {
+	kingPiece := board.BK
+	if isWhite {
+		kingPiece = board.WK
+	}
+
+	for rank := 0; rank < 8; rank++ {
+		for file := 0; file < 8; file++ {
+			if b.GetPiece(rank, file) == kingPiece {
+				return rank, file
+			}
+		}
+	}
+	return -1, -1 // King not found (shouldn't happen in valid game)
+}
+
+// evaluateKingPosition rewards safe king positions
+func evaluateKingPosition(b *board.Board, kingRank, kingFile int, isWhite bool) int {
+	score := 0
+
+	// Penalize exposed kings (basic version)
+	edgeDistance := min(min(kingRank, 7-kingRank), min(kingFile, 7-kingFile))
+	if edgeDistance <= 1 {
+		score -= 30 // Small penalty for being near edges in middlegame
+	}
+
+	return score
+}
+
+// evaluateEndgameKingPosition prevents kings from walking into mating nets
+func evaluateEndgameKingPosition(b *board.Board, kingRank, kingFile int, isWhite bool) int {
+	score := 0
+
+	// Count enemy material to determine danger level
+	enemyMaterial := 0
+	for rank := 0; rank < 8; rank++ {
+		for file := 0; file < 8; file++ {
+			piece := b.GetPiece(rank, file)
+			if piece != board.Empty {
+				pieceIsWhite := piece < board.BP
+				if pieceIsWhite != isWhite {
+					switch piece {
+					case board.WQ, board.BQ:
+						enemyMaterial += 900
+					case board.WR, board.BR:
+						enemyMaterial += 500
+					case board.WN, board.BN, board.WB, board.BB:
+						enemyMaterial += 300
+					case board.WP, board.BP:
+						enemyMaterial += 100
+					}
+				}
+			}
+		}
+	}
+
+	// If enemy has significant material, heavily penalize being near edges
+	edgeDistance := min(min(kingRank, 7-kingRank), min(kingFile, 7-kingFile))
+	if enemyMaterial > 300 {
+		score -= (2 - edgeDistance) * 150 // Heavy penalty for being near edges with enemy material
+	}
+
+	// Penalize corners even more severely
+	if (kingRank == 0 || kingRank == 7) && (kingFile == 0 || kingFile == 7) {
+		score -= 300 // Very heavy penalty for corner squares
+	}
+
+	return score
+}
+
+// evaluateMobility rewards pieces that have more legal moves
+func evaluateMobility(b *board.Board) int {
+	// This would require move generation for each piece, which is computationally expensive
+	// For now, return 0, but this could be implemented for stronger play
+	return 0
 }
