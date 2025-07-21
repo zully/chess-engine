@@ -1,0 +1,425 @@
+/* Reset and base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.game-area {
+    display: flex;
+    min-height: 600px;
+}
+
+.board-container {
+    flex: 1;
+    padding: 30px;
+    background: #f8f9fa;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.controls {
+    width: 350px;
+    padding: 30px;
+    background: white;
+    border-left: 1px solid #e9ecef;
+}
+
+/* Chess Board */
+.board-wrapper {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.board-with-files {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#chess-board {
+    display: grid;
+    grid-template-columns: repeat(8, 60px);
+    grid-template-rows: repeat(8, 60px);
+    border: 3px solid #8b4513;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+.rank-labels {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 486px; /* 8 * 60px + 6px border */
+    padding: 3px 0;
+    font-weight: bold;
+    font-size: 14px;
+    color: #495057;
+}
+
+.rank-labels div {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-labels {
+    display: flex;
+    justify-content: space-between;
+    width: 486px; /* 8 * 60px + 6px border */
+    padding: 0 3px;
+    font-weight: bold;
+    font-size: 14px;
+    color: #495057;
+}
+
+.file-labels div {
+    width: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.square {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.square.light {
+    background-color: #f0d9b5;
+}
+
+.square.dark {
+    background-color: #b58863;
+}
+
+.square:hover {
+    box-shadow: inset 0 0 0 3px #007bff;
+}
+
+.square.highlight {
+    background-color: #fff3cd !important;
+    box-shadow: inset 0 0 0 3px #ffc107;
+}
+
+.square.check {
+    background-color: #f8d7da !important;
+    box-shadow: inset 0 0 0 3px #dc3545;
+}
+
+.square.selected {
+    background-color: #fff3cd !important;
+    box-shadow: inset 0 0 0 3px #ffc107;
+}
+
+.square.dragging-from {
+    background-color: #e2e3e5 !important;
+    opacity: 0.7;
+}
+
+.square.possible-move {
+    position: relative;
+}
+
+.square.possible-move::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background-color: rgba(0, 123, 255, 0.6);
+}
+
+.square.possible-move:hover {
+    background-color: rgba(0, 123, 255, 0.2) !important;
+}
+
+.square.draggable {
+    cursor: grab;
+}
+
+.square.draggable:active {
+    cursor: grabbing;
+}
+
+.piece[draggable="true"] {
+    cursor: grab;
+}
+
+.piece[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+/* Piece symbols using Unicode */
+.piece {
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.piece.white {
+    color: #fff;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.piece.black {
+    color: #333;
+    text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.3);
+}
+
+/* Controls */
+h2 {
+    color: #343a40;
+    margin-bottom: 25px;
+    text-align: center;
+    font-size: 24px;
+}
+
+.input-section {
+    margin-bottom: 20px;
+}
+
+#move-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    font-size: 16px;
+    margin-bottom: 10px;
+    transition: border-color 0.2s ease;
+}
+
+#move-input:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.button-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+button {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#make-move-btn {
+    background: #28a745;
+    color: white;
+}
+
+#make-move-btn:hover {
+    background: #218838;
+    transform: translateY(-1px);
+}
+
+#engine-btn {
+    background: #007bff;
+    color: white;
+}
+
+#engine-btn:hover {
+    background: #0056b3;
+    transform: translateY(-1px);
+}
+
+#auto-btn {
+    background: #ffc107;
+    color: #212529;
+}
+
+#auto-btn:hover {
+    background: #e0a800;
+    transform: translateY(-1px);
+}
+
+#flip-btn {
+    background: #6f42c1;
+    color: white;
+}
+
+#flip-btn:hover {
+    background: #5a32a3;
+    transform: translateY(-1px);
+}
+
+#reset-btn {
+    background: #dc3545;
+    color: white;
+}
+
+#reset-btn:hover {
+    background: #c82333;
+    transform: translateY(-1px);
+}
+
+.message {
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-weight: 500;
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+}
+
+.message.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.message.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.message.info {
+    background: #cce7ff;
+    color: #004085;
+    border: 1px solid #b3d7ff;
+}
+
+.message.warning {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+}
+
+.moves-section h3 {
+    color: #495057;
+    margin-bottom: 15px;
+    font-size: 18px;
+}
+
+#move-history {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+#move-history:empty::before {
+    content: "No moves yet...";
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Loading states */
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    border: 2px solid transparent;
+    border-top: 2px solid #fff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .game-area {
+        flex-direction: column;
+    }
+    
+    .controls {
+        width: 100%;
+        border-left: none;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    #chess-board {
+        grid-template-columns: repeat(8, 45px);
+        grid-template-rows: repeat(8, 45px);
+    }
+    
+    .square {
+        font-size: 24px;
+    }
+    
+    .rank-labels {
+        height: 366px; /* 8 * 45px + 6px border */
+        font-size: 12px;
+    }
+    
+    .rank-labels div {
+        height: 45px;
+    }
+    
+    .file-labels {
+        width: 366px; /* 8 * 45px + 6px border */
+        font-size: 12px;
+    }
+    
+    .file-labels div {
+        width: 45px;
+    }
+    
+    .container {
+        margin: 10px;
+        border-radius: 10px;
+    }
+    
+    .board-container, .controls {
+        padding: 20px;
+    }
+} 
