@@ -246,6 +246,89 @@ func (b *Board) isInCheck(isWhite bool) bool {
 	return b.isSquareAttacked(kingRank, kingFile, !isWhite)
 }
 
+// isCheckmate returns true if the specified color is in checkmate
+func (b *Board) isCheckmate(isWhite bool) bool {
+	// First, the king must be in check
+	if !b.isInCheck(isWhite) {
+		return false
+	}
+
+	// Try all possible moves for this color to see if any can escape check
+	for fromRank := 0; fromRank < 8; fromRank++ {
+		for fromFile := 0; fromFile < 8; fromFile++ {
+			piece := b.GetPiece(fromRank, fromFile)
+
+			// Skip empty squares and opponent pieces
+			if piece == Empty || (piece < BP) != isWhite {
+				continue
+			}
+
+			// Try all possible destination squares for this piece
+			for toRank := 0; toRank < 8; toRank++ {
+				for toFile := 0; toFile < 8; toFile++ {
+					// Skip moving to the same square
+					if fromRank == toRank && fromFile == toFile {
+						continue
+					}
+
+					// Check if this piece can legally move to this square
+					canMove := false
+					switch piece {
+					case WP, BP:
+						// Check if it's a capture
+						targetPiece := b.GetPiece(toRank, toFile)
+						isCapture := targetPiece != Empty
+						canMove = canPawnMove(b, fromRank, fromFile, toRank, toFile, isCapture)
+					case WN, BN:
+						canMove = canKnightMove(fromRank, fromFile, toRank, toFile)
+					case WB, BB:
+						canMove = canBishopMove(b, fromRank, fromFile, toRank, toFile)
+					case WR, BR:
+						canMove = canRookMove(b, fromRank, fromFile, toRank, toFile)
+					case WQ, BQ:
+						canMove = canQueenMove(b, fromRank, fromFile, toRank, toFile)
+					case WK, BK:
+						canMove = canKingMove(fromRank, fromFile, toRank, toFile)
+					}
+
+					if !canMove {
+						continue
+					}
+
+					// Check if the destination square is valid for capture/movement
+					targetPiece := b.GetPiece(toRank, toFile)
+					if targetPiece != Empty {
+						// Can't capture own pieces
+						if (targetPiece < BP) == isWhite {
+							continue
+						}
+					}
+
+					// Try the move temporarily
+					originalPiece := targetPiece
+					b.Squares[toRank][toFile].Piece = piece
+					b.Squares[fromRank][fromFile].Piece = Empty
+
+					// Check if the king is still in check after this move
+					stillInCheck := b.isInCheck(isWhite)
+
+					// Undo the move
+					b.Squares[fromRank][fromFile].Piece = piece
+					b.Squares[toRank][toFile].Piece = originalPiece
+
+					// If this move gets us out of check, it's not checkmate
+					if !stillInCheck {
+						return false
+					}
+				}
+			}
+		}
+	}
+
+	// No legal move can escape check, so it's checkmate
+	return true
+}
+
 // abs returns the absolute value of x
 func abs(x int) int {
 	if x < 0 {

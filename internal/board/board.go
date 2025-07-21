@@ -218,12 +218,20 @@ func (b *Board) String() string {
 	if b.WhiteToMove {
 		result += "\nWhite to move"
 		if b.isInCheck(true) {
-			result += " - CHECK!"
+			if b.isCheckmate(true) {
+				result += " - CHECKMATE!"
+			} else {
+				result += " - CHECK!"
+			}
 		}
 	} else {
 		result += "\nBlack to move"
 		if b.isInCheck(false) {
-			result += " - CHECK!"
+			if b.isCheckmate(false) {
+				result += " - CHECKMATE!"
+			} else {
+				result += " - CHECK!"
+			}
 		}
 	}
 	return result

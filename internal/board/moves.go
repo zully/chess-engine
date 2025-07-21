@@ -189,24 +189,6 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 	return "", fmt.Errorf("no %s found that could move to %s", pieceType, move.To)
 }
 
-// makeTemporaryMove makes a move and returns a function to undo it
-func (b *Board) makeTemporaryMove(from, to string) func() {
-	fromSquare := b.GetSquare(from)
-	toSquare := b.GetSquare(to)
-	oldFromPiece := fromSquare.Piece
-	oldToPiece := toSquare.Piece
-
-	// Make the move
-	toSquare.Piece = fromSquare.Piece
-	fromSquare.Piece = Empty
-
-	// Return an undo function
-	return func() {
-		fromSquare.Piece = oldFromPiece
-		toSquare.Piece = oldToPiece
-	}
-}
-
 // MakeMove makes a move on the board using algebraic notation
 func (b *Board) MakeMove(notation string) error {
 	move, err := moves.ParseAlgebraic(notation, b.WhiteToMove)
@@ -300,20 +282,33 @@ func (b *Board) MakeMove(notation string) error {
 	toSquare.Piece = fromSquare.Piece
 	fromSquare.Piece = Empty
 
-	// Record the move
-	b.MovesPlayed = append(b.MovesPlayed, notation)
-
 	// Switch turns
 	b.WhiteToMove = !b.WhiteToMove
 
 	// Check if the opponent is in check after this move
 	if b.isInCheck(b.WhiteToMove) {
-		if b.WhiteToMove {
-			fmt.Println("White is in check!")
+		// Check if it's checkmate
+		if b.isCheckmate(b.WhiteToMove) {
+			// Add checkmate notation
+			notation += "#"
+			if b.WhiteToMove {
+				fmt.Println("Checkmate! White is checkmated!")
+			} else {
+				fmt.Println("Checkmate! Black is checkmated!")
+			}
 		} else {
-			fmt.Println("Black is in check!")
+			// Add check notation
+			notation += "+"
+			if b.WhiteToMove {
+				fmt.Println("White is in check!")
+			} else {
+				fmt.Println("Black is in check!")
+			}
 		}
 	}
+
+	// Record the move (with check notation if applicable)
+	b.MovesPlayed = append(b.MovesPlayed, notation)
 
 	return nil
 }
