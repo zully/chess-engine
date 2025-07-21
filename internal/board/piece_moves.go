@@ -38,56 +38,9 @@ func canPawnMove(b *Board, fromRank, fromFile, toRank, toFile int, isCapture boo
 		// Must capture an enemy piece (TODO: add en passant)
 		targetPiece := b.GetPiece(toRank, toFile)
 		fmt.Printf("DEBUG: Target piece: %s\n", PieceToString(targetPiece))
-		return targetPiece != Empty && ((targetPiece >= BP) != isWhite)
-	}
-
-	// Regular pawn move - must stay in the same file
-	if fromFile != toFile {
-		return false
-	}
-
-	// Can move one square forward
-	rankDiff := toRank - fromRank // Difference from the pawn's perspective
-	if rankDiff == direction {
-		return b.IsSquareEmpty(toRank, toFile)
-	}
-
-	// Can move two squares forward from starting position
-	if isStartRank && rankDiff == 2*direction {
-		midRank := fromRank + direction // Move in direction of travel
-		return b.IsSquareEmpty(toRank, toFile) && b.IsSquareEmpty(midRank, fromFile)
-	}
-
-	return false
-}
-
-	// Get direction - white moves up the board (-1 in rank), black moves down (+1 in rank)
-	direction := -1              // White moves up the board (rank decreases)
-	isStartRank := fromRank == 6 // White pawns start on rank 2 (index 6)
-	if !isWhite {
-		direction = 1               // Black moves down the board (rank increases)
-		isStartRank = fromRank == 1 // Black pawns start on rank 7 (index 1)
-	}
-
-	fmt.Printf("DEBUG: Pawn direction=%d, isStartRank=%v\n", direction, isStartRank)
-
-	if isCapture {
-		// Pawn captures move one square diagonally
-		rankDiff := toRank - fromRank
-		fileDiff := abs(toFile - fromFile)
-		fmt.Printf("DEBUG: Pawn capture from (%d,%d) to (%d,%d), direction %d\n", fromRank, fromFile, toRank, toFile, direction)
-		fmt.Printf("DEBUG: Pawn isWhite=%v, rankDiff=%d, fileDiff=%d\n", isWhite, rankDiff, fileDiff)
-
-		// Must move one square diagonally forward
-		if fileDiff != 1 || rankDiff != direction {
-			fmt.Printf("DEBUG: Invalid capture: fileDiff=%d, rankDiff=%d, expected direction %d\n", fileDiff, rankDiff, direction)
-			return false
-		}
-
-		// Must capture an enemy piece (TODO: add en passant)
-		targetPiece := b.GetPiece(toRank, toFile)
-		fmt.Printf("DEBUG: Target piece: %s\n", PieceToString(targetPiece))
-		return targetPiece != Empty && ((targetPiece >= BP) != isWhite)
+		// Check if target piece is enemy: white captures black (targetPiece >= BP), black captures white (targetPiece < BP)
+		isTargetEnemy := (isWhite && targetPiece >= BP) || (!isWhite && targetPiece < BP)
+		return targetPiece != Empty && isTargetEnemy
 	}
 
 	// Regular pawn move - must stay in the same file
@@ -321,17 +274,4 @@ func sign(x int) int {
 		return 1
 	}
 	return 0
-}
-
-// getSquareCoords converts algebraic notation (e.g., "e4") to rank and file (0-7)
-// The board is indexed with white at the bottom (rank 1-8) and files a-h from left to right.
-// So for example, e4 should convert to (4,4) in array indices.
-func getSquareCoords(square string) (rank int, file int) {
-	if len(square) != 2 {
-		return -1, -1
-	}
-	file = int(square[0] - 'a')
-	rank = 7 - (int(square[1] - '1')) // Convert '4' to array index 4 from bottom (7-3=4)
-	fmt.Printf("DEBUG: Converting %s to rank %d, file %d\n", square, rank, file)
-	return rank, file
 }

@@ -2,6 +2,7 @@ package board
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/zully/chess-engine/internal/moves"
 )
@@ -237,8 +238,8 @@ func (b *Board) MakeMove(notation string) error {
 	endRank, endFile := getSquareCoords(move.To)
 	fmt.Printf("DEBUG: To square %s -> rank %d, file %d\n", move.To, endRank, endFile)
 
-	// If the from square isn't specified (for piece moves), find it
-	if move.From == "" {
+	// If the from square isn't specified or contains wildcard (for piece moves and pawn captures), find it
+	if move.From == "" || strings.Contains(move.From, "*") {
 		from, err := b.FindPieceForMove(move)
 		if err != nil {
 			return err
