@@ -678,7 +678,8 @@ func getDisambiguation(b *board.Board, move moves.Move) string {
 	}
 
 	// Queens and Kings NEVER need disambiguation - there's only one per side!
-	if move.Piece == "Q" || move.Piece == "K" {
+	// Bishops rarely need disambiguation since they're on different colored squares
+	if move.Piece == "Q" || move.Piece == "K" || move.Piece == "B" {
 		return ""
 	}
 
