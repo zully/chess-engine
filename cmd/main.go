@@ -1,264 +1,355 @@
 package main
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
+	"html/template"
+	"log"
+	"net/http"
 
 	"github.com/zully/chess-engine/internal/board"
 	"github.com/zully/chess-engine/internal/engine"
 	"github.com/zully/chess-engine/internal/moves"
 )
 
-func printHelp() {
-	fmt.Println("\nChess Engine CLI Commands:")
-	fmt.Println("  Enter moves directly using standard chess notation:")
-	fmt.Println("    - Pawn moves: e4, d5")
-	fmt.Println("    - Piece moves: Nf3, Bb5")
-	fmt.Println("    - Captures: exd5, Bxe4")
-	fmt.Println("    - Castling: O-O (kingside), O-O-O (queenside)")
-	fmt.Println("\n  Engine commands:")
-	fmt.Println("    engine (en) - Let computer play the next move")
-	fmt.Println("    auto        - Toggle auto-play mode (computer vs computer)")
-	fmt.Println("\n  Other commands:")
-	fmt.Println("    display (d) - Show the current board position")
-	fmt.Println("    eval (e)    - Show evaluation of current position")
-	fmt.Println("    help (h)    - Show this help message")
-	fmt.Println("    quit (q)    - Exit the program")
+type GameState struct {
+	Board         *board.Board `json:"board"`
+	Message       string       `json:"message"`
+	Error         string       `json:"error,omitempty"`
+	GameOver      bool         `json:"gameOver"`
+	InCheck       bool         `json:"inCheck"`
+	IsCheckmate   bool         `json:"isCheckmate"`
+	Draw          bool         `json:"draw"`
+	DrawReason    string       `json:"drawReason"`
+	ThreefoldRep  bool         `json:"threefoldRepetition"`
+	PositionCount int          `json:"positionCount"`
 }
 
-// isValidMoveNotation checks if a string looks like a valid chess move
-func isValidMoveNotation(move string) bool {
-	// Handle castling
-	if strings.ToLower(move) == "o-o" || strings.ToLower(move) == "o-o-o" {
-		return true
-	}
-
-	// Handle piece moves (e.g., Nf3, Bxe4)
-	if len(move) >= 3 && (move[0] == 'N' || move[0] == 'B' || move[0] == 'R' || move[0] == 'Q' || move[0] == 'K') {
-		return true
-	}
-
-	// Handle pawn moves (e.g., e4, exd5, a1=Q, a1Q) - must be exactly 2 chars for simple moves or 4 for captures
-	if len(move) == 2 && move[0] >= 'a' && move[0] <= 'h' && move[1] >= '1' && move[1] <= '8' {
-		return true
-	}
-
-	// Handle pawn captures (e.g., exd5)
-	if len(move) == 4 && move[0] >= 'a' && move[0] <= 'h' && move[1] == 'x' &&
-		move[2] >= 'a' && move[2] <= 'h' && move[3] >= '1' && move[3] <= '8' {
-		return true
-	}
-
-	// Handle pawn promotion without = (e.g., a1Q, a8R)
-	if len(move) == 3 && move[0] >= 'a' && move[0] <= 'h' && move[1] >= '1' && move[1] <= '8' &&
-		(move[2] == 'Q' || move[2] == 'R' || move[2] == 'B' || move[2] == 'N') {
-		return true
-	}
-
-	// Handle pawn promotion with = (e.g., a1=Q, a8=R)
-	if len(move) == 4 && move[0] >= 'a' && move[0] <= 'h' && move[1] >= '1' && move[1] <= '8' &&
-		move[2] == '=' && (move[3] == 'Q' || move[3] == 'R' || move[3] == 'B' || move[3] == 'N') {
-		return true
-	}
-
-	// Handle pawn capture with promotion (e.g., exd8=Q, exd8Q)
-	if len(move) >= 5 && move[0] >= 'a' && move[0] <= 'h' && move[1] == 'x' &&
-		move[2] >= 'a' && move[2] <= 'h' && move[3] >= '1' && move[3] <= '8' {
-		if len(move) == 5 && (move[4] == 'Q' || move[4] == 'R' || move[4] == 'B' || move[4] == 'N') {
-			return true // exd8Q format
-		}
-		if len(move) == 6 && move[4] == '=' && (move[5] == 'Q' || move[5] == 'R' || move[5] == 'B' || move[5] == 'N') {
-			return true // exd8=Q format
-		}
-	}
-
-	return false
+type MoveRequest struct {
+	Move string `json:"move"`
 }
 
-func processCommand(cmd string, b *board.Board, autoPlay *bool) bool {
-	// Clean up the command
-	cmd = strings.TrimSpace(cmd)
-	if cmd == "" {
-		return true
+type EngineRequest struct {
+	Depth int `json:"depth,omitempty"`
+}
+
+var gameBoard *board.Board
+
+func main() {
+	// Initialize the game board
+	gameBoard = board.NewBoard()
+
+	// Serve static files (CSS, JS)
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static/"))))
+
+	// API endpoints
+	http.HandleFunc("/api/state", getGameState)
+	http.HandleFunc("/api/move", makeMove)
+	http.HandleFunc("/api/engine", engineMove)
+	http.HandleFunc("/api/undo", undoMove)
+	http.HandleFunc("/api/reset", resetGame)
+
+	// Main page
+	http.HandleFunc("/", homePage)
+
+	fmt.Println("Chess Web GUI starting on http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func homePage(w http.ResponseWriter, r *http.Request) {
+	tmpl := `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Engine GUI</title>
+    <link rel="stylesheet" href="/static/chess.css">
+</head>
+<body>
+    <div class="container">
+        <div class="game-area">
+            <div class="board-container">
+                <div class="board-wrapper">
+                    <div id="rank-labels-left" class="rank-labels"></div>
+                    <div class="board-with-files">
+                        <div id="chess-board"></div>
+                        <div id="file-labels-bottom" class="file-labels"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="controls">
+                <h2>Chess Engine GUI</h2>
+                <div class="engine-section">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="engine-white-checkbox"> Engine plays White
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="engine-black-checkbox"> Engine plays Black
+                    </label>
+                </div>
+                <div class="button-section">
+                    <button id="engine-btn">Engine Move</button>
+                    <button id="undo-btn">Undo Move</button>
+                    <button id="flip-btn">Flip Board</button>
+                    <button id="reset-btn">Reset Game</button>
+                </div>
+                <div id="game-message" class="message"></div>
+                <div class="moves-section">
+                    <h3>Move History</h3>
+                    <div id="move-history"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/chess.js"></script>
+</body>
+</html>`
+
+	t := template.Must(template.New("home").Parse(tmpl))
+	t.Execute(w, nil)
+}
+
+func getGameState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	inCheck := gameBoard.IsInCheck(gameBoard.WhiteToMove)
+	isCheckmate := false
+	if inCheck {
+		isCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
 	}
 
-	// Split into fields but preserve original case
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return true
-	}
-
-	// First check if it's a valid move notation (preserve case for piece moves)
-	if isValidMoveNotation(parts[0]) {
-		move := parts[0]
-		err := b.MakeMove(move)
-		if err != nil {
-			fmt.Printf("Invalid move: %v\n", err)
-			return true
-		}
-		fmt.Printf("Played %s\n", move)
-		fmt.Println(b)
-		return true
-	}
-
-	switch parts[0] {
-	case "quit", "q":
-		return false
-
-	case "help", "h":
-		printHelp()
-
-	case "display", "d":
-		fmt.Println(b)
-
-	case "eval", "e":
-		score := engine.Evaluate(b)
-		fmt.Printf("Position evaluation: %d\n", score)
-
-	case "engine", "en":
-		fmt.Println("Engine is thinking...")
-		result := engine.FindBestMove(b, 6) // Search depth 6 for stronger play
-		if result.BestMove == (moves.Move{}) {
-			fmt.Println("No legal moves found!")
-			return true
-		}
-
-		// Execute the engine move directly
-		err := engine.ExecuteEngineMove(b, result.BestMove)
-		if err != nil {
-			fmt.Printf("Engine error: %v\n", err)
-			return true
-		}
-
-		// Convert to notation for display only
-		moveNotation := formatMoveNotation(result.BestMove)
-		fmt.Printf("Engine plays: %s (evaluation: %d)\n", moveNotation, result.Score)
-		fmt.Println(b)
-
-	case "auto":
-		*autoPlay = !*autoPlay
-		if *autoPlay {
-			fmt.Println("Auto-play mode ON - Computer will play both sides")
+	isDraw := gameBoard.IsDraw()
+	drawReason := ""
+	if isDraw {
+		if gameBoard.IsThreefoldRepetition() {
+			drawReason = "Threefold repetition"
 		} else {
-			fmt.Println("Auto-play mode OFF - Manual input required")
+			drawReason = "Stalemate"
 		}
-
-	case "move", "m":
-		if len(parts) != 2 {
-			fmt.Println("Invalid move format. Examples: e4, Nf3, O-O, exd5")
-			return true
-		}
-		move := parts[1]
-
-		err := b.MakeMove(move)
-		if err != nil {
-			fmt.Printf("Invalid move: %v\n", err)
-			return true
-		}
-
-		fmt.Printf("Played %s\n", move)
-		fmt.Println(b)
-
-	default:
-		fmt.Println("Unknown command. Type 'help' for available commands")
 	}
 
-	return true
+	state := GameState{
+		Board:         gameBoard,
+		InCheck:       inCheck,
+		IsCheckmate:   isCheckmate,
+		GameOver:      isCheckmate || isDraw,
+		Draw:          isDraw,
+		DrawReason:    drawReason,
+		ThreefoldRep:  gameBoard.IsThreefoldRepetition(),
+		PositionCount: gameBoard.GetPositionCount(),
+	}
+
+	if isDraw {
+		state.Message = fmt.Sprintf("Draw! %s", drawReason)
+	} else if state.InCheck && !state.IsCheckmate {
+		if gameBoard.WhiteToMove {
+			state.Message = "White is in check!"
+		} else {
+			state.Message = "Black is in check!"
+		}
+	} else if state.IsCheckmate {
+		if gameBoard.WhiteToMove {
+			state.Message = "Checkmate! Black wins!"
+		} else {
+			state.Message = "Checkmate! White wins!"
+		}
+	} else {
+		if gameBoard.WhiteToMove {
+			state.Message = "White to move"
+		} else {
+			state.Message = "Black to move"
+		}
+	}
+
+	json.NewEncoder(w).Encode(state)
 }
 
-// formatMoveNotation converts a Move struct to standard algebraic notation
-func formatMoveNotation(move moves.Move) string {
-	notation := ""
+func makeMove(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 
-	// Add piece prefix (except for pawns)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req MoveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		state := GameState{Board: gameBoard, Error: "Invalid request format"}
+		json.NewEncoder(w).Encode(state)
+		return
+	}
+
+	err := gameBoard.MakeMove(req.Move)
+	state := GameState{Board: gameBoard}
+
+	if err != nil {
+		state.Error = err.Error()
+	} else {
+		state.Message = fmt.Sprintf("Played %s", req.Move)
+	}
+
+	// Update check/checkmate status
+	state.InCheck = gameBoard.IsInCheck(gameBoard.WhiteToMove)
+	state.IsCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
+	state.GameOver = state.IsCheckmate
+
+	json.NewEncoder(w).Encode(state)
+}
+
+func engineMove(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req EngineRequest
+	json.NewDecoder(r.Body).Decode(&req)
+
+	depth := 4
+	if req.Depth > 0 && req.Depth <= 8 {
+		depth = req.Depth
+	}
+
+	result := engine.FindBestMove(gameBoard, depth)
+	state := GameState{Board: gameBoard}
+
+	if result.BestMove.From == "" {
+		state.Error = "No valid moves found"
+	} else {
+		err := engine.ExecuteEngineMove(gameBoard, result.BestMove)
+		if err != nil {
+			state.Error = err.Error()
+		} else {
+			state.Message = fmt.Sprintf("Engine played %s (evaluation: %d)",
+				formatEngineMove(result.BestMove), result.Score)
+		}
+	}
+
+	// Update check/checkmate status
+	state.InCheck = gameBoard.IsInCheck(gameBoard.WhiteToMove)
+	state.IsCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
+	state.GameOver = state.IsCheckmate
+
+	json.NewEncoder(w).Encode(state)
+}
+
+func undoMove(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check if there are moves to undo
+	if len(gameBoard.MovesPlayed) == 0 {
+		state := GameState{
+			Board: gameBoard,
+			Error: "No moves to undo!",
+		}
+		json.NewEncoder(w).Encode(state)
+		return
+	}
+
+	// Store the current moves list
+	currentMoves := make([]string, len(gameBoard.MovesPlayed))
+	copy(currentMoves, gameBoard.MovesPlayed)
+
+	// Remove the last move
+	movesToReplay := currentMoves[:len(currentMoves)-1]
+
+	// Create a fresh board
+	gameBoard = board.NewBoard()
+
+	// Replay all moves except the last one
+	for _, move := range movesToReplay {
+		err := gameBoard.MakeMove(move)
+		if err != nil {
+			// If replay fails, restore the original board state
+			// This shouldn't happen, but just in case
+			gameBoard = board.NewBoard()
+			for _, originalMove := range currentMoves {
+				gameBoard.MakeMove(originalMove)
+			}
+			state := GameState{
+				Board: gameBoard,
+				Error: fmt.Sprintf("Failed to undo move: %v", err),
+			}
+			json.NewEncoder(w).Encode(state)
+			return
+		}
+	}
+
+	// Create and return the updated game state
+	inCheck := gameBoard.IsInCheck(gameBoard.WhiteToMove)
+	isCheckmate := false
+	if inCheck {
+		isCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
+	}
+
+	isDraw := gameBoard.IsDraw()
+	drawReason := ""
+	if isDraw {
+		if gameBoard.IsThreefoldRepetition() {
+			drawReason = "Threefold repetition"
+		} else {
+			drawReason = "Stalemate"
+		}
+	}
+
+	state := GameState{
+		Board:         gameBoard,
+		InCheck:       inCheck,
+		IsCheckmate:   isCheckmate,
+		GameOver:      isCheckmate || isDraw,
+		Draw:          isDraw,
+		DrawReason:    drawReason,
+		ThreefoldRep:  gameBoard.IsThreefoldRepetition(),
+		PositionCount: gameBoard.GetPositionCount(),
+	}
+
+	lastMove := currentMoves[len(currentMoves)-1]
+	state.Message = fmt.Sprintf("Undid move %s", lastMove)
+
+	json.NewEncoder(w).Encode(state)
+}
+
+func resetGame(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	gameBoard = board.NewBoard()
+	state := GameState{
+		Board:   gameBoard,
+		Message: "Game reset. White to move.",
+	}
+
+	json.NewEncoder(w).Encode(state)
+}
+
+func formatEngineMove(move moves.Move) string {
+	notation := ""
 	if move.Piece != "P" {
 		notation += move.Piece
 	}
-
-	// Add capture indicator
 	if move.Capture {
-		if move.Piece == "P" {
-			// For pawn captures, include the file
-			notation += move.From[0:1] + "x"
-		} else {
-			notation += "x"
+		if move.Piece == "P" && move.From != "" {
+			notation += string(move.From[0])
 		}
+		notation += "x"
 	}
-
-	// Add destination square
 	notation += move.To
-
-	// Add promotion notation
 	if move.Promote != "" {
 		notation += "=" + move.Promote
 	}
-
-	return notation
-}
-
-func main() {
-	fmt.Println("Chess Engine CLI")
-	fmt.Println("Type 'help' for available commands")
-
-	b := board.NewBoard()
-	reader := bufio.NewReader(os.Stdin)
-	autoPlay := false
-
-	// Show initial position
-	fmt.Println(b)
-
-	// Main input loop
-	for {
-		// Auto-play mode: computer plays automatically
-		if autoPlay {
-			fmt.Println("Computer is thinking...")
-			result := engine.FindBestMove(b, 5) // Depth 5 for stronger auto-play
-			if result.BestMove == (moves.Move{}) {
-				fmt.Println("Game over - no legal moves!")
-				break
-			}
-
-			err := engine.ExecuteEngineMove(b, result.BestMove)
-			if err != nil {
-				fmt.Printf("Computer error: %v\n", err)
-				autoPlay = false
-				continue
-			}
-
-			moveNotation := formatMoveNotation(result.BestMove)
-			fmt.Printf("Computer plays: %s\n", moveNotation)
-			fmt.Println(b)
-
-			// Brief pause for readability
-			fmt.Println("Press Enter to continue or type 'auto' to stop...")
-		}
-
-		fmt.Print("> ")
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Printf("Error reading input: %v\n", err)
-			break
-		}
-
-		// Process the command, preserving case for moves
-		input = strings.TrimSpace(input)
-		if len(input) == 0 {
-			continue
-		}
-
-		// Convert to lowercase only if it's not a potential move
-		cmd := input
-		if !isValidMoveNotation(strings.Fields(input)[0]) {
-			cmd = strings.ToLower(input)
-		}
-
-		// Process the command
-		if !processCommand(cmd, b, &autoPlay) {
-			break
-		}
+	if move.Castle != "" {
+		notation = move.Castle
 	}
-
-	fmt.Println("Goodbye!")
+	return notation
 }

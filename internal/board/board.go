@@ -30,13 +30,14 @@ type Square struct {
 
 // Board represents a chess board
 type Board struct {
-	Squares        [8][8]Square // 8x8 board with named squares
-	WhiteToMove    bool         // true if it's white's turn
-	CastlingRights int          // stores castling availability
-	EnPassant      string       // en passant target square in algebraic notation
-	HalfMoveClock  int          // counts moves since last pawn move or capture
-	FullMoveNumber int          // counts full moves in the game
-	MovesPlayed    []string     // list of moves in algebraic notation
+	Squares         [8][8]Square   // 8x8 board with named squares
+	WhiteToMove     bool           // true if it's white's turn
+	CastlingRights  int            // stores castling availability
+	EnPassant       string         // en passant target square in algebraic notation
+	HalfMoveClock   int            // counts moves since last pawn move or capture
+	FullMoveNumber  int            // counts full moves in the game
+	MovesPlayed     []string       // list of moves in algebraic notation
+	PositionHistory map[uint64]int // tracks position occurrences for repetition detection
 }
 
 // PieceToString converts a piece constant to its string representation
@@ -76,12 +77,13 @@ func PieceToString(piece int) string {
 // NewBoard creates and returns a new board in the initial chess position
 func NewBoard() *Board {
 	b := &Board{
-		WhiteToMove:    true,
-		CastlingRights: 15, // 1111 in binary - all castling available
-		EnPassant:      "", // no en passant target initially
-		HalfMoveClock:  0,
-		FullMoveNumber: 1,
-		MovesPlayed:    make([]string, 0),
+		WhiteToMove:     true,
+		CastlingRights:  15, // 1111 in binary - all castling available
+		EnPassant:       "", // no en passant target initially
+		HalfMoveClock:   0,
+		FullMoveNumber:  1,
+		MovesPlayed:     make([]string, 0),
+		PositionHistory: make(map[uint64]int),
 	}
 
 	// Initialize all squares with their names
@@ -129,6 +131,9 @@ func NewBoard() *Board {
 	b.Squares[0][6] = Square{Name: "g8", Piece: BN}
 	b.Squares[0][7] = Square{Name: "h8", Piece: BR}
 
+	// Record the initial position
+	b.RecordPosition()
+
 	return b
 }
 
@@ -157,6 +162,122 @@ func (b *Board) GetSquareByCoords(rank, file int) *Square {
 // IsSquareEmpty returns true if the given square is empty
 func (b *Board) IsSquareEmpty(rank, file int) bool {
 	return b.GetPiece(rank, file) == Empty
+}
+
+// GetPositionHash generates a hash of the current position for repetition detection
+// Hash includes: piece positions, whose turn, castling rights, en passant target
+func (b *Board) GetPositionHash() uint64 {
+	var hash uint64 = 0
+
+	// Hash piece positions (use a simple polynomial rolling hash)
+	const prime = 31
+	for rank := 0; rank < 8; rank++ {
+		for file := 0; file < 8; file++ {
+			piece := b.GetPiece(rank, file)
+			// Each square contributes: piece * prime^(position)
+			position := uint64(rank*8 + file)
+			hash = hash*prime + uint64(piece)*prime + position
+		}
+	}
+
+	// Include whose turn it is
+	if b.WhiteToMove {
+		hash = hash*prime + 1
+	} else {
+		hash = hash*prime + 2
+	}
+
+	// Include castling rights
+	hash = hash*prime + uint64(b.CastlingRights)
+
+	// Include en passant target
+	if b.EnPassant != "" {
+		for _, c := range b.EnPassant {
+			hash = hash*prime + uint64(c)
+		}
+	}
+
+	return hash
+}
+
+// RecordPosition records the current position in history
+func (b *Board) RecordPosition() {
+	hash := b.GetPositionHash()
+	b.PositionHistory[hash]++
+}
+
+// GetPositionCount returns how many times the current position has occurred
+func (b *Board) GetPositionCount() int {
+	hash := b.GetPositionHash()
+	return b.PositionHistory[hash]
+}
+
+// IsThreefoldRepetition returns true if current position has occurred 3+ times
+func (b *Board) IsThreefoldRepetition() bool {
+	return b.GetPositionCount() >= 3
+}
+
+// IsDraw returns true if the position is a draw by repetition or stalemate
+func (b *Board) IsDraw() bool {
+	// Check for threefold repetition
+	if b.IsThreefoldRepetition() {
+		return true
+	}
+
+	// Check for stalemate (no legal moves but not in check)
+	if !b.IsInCheck(b.WhiteToMove) {
+		// Generate all legal moves to see if there are any
+		// This is a simplified check - ideally we'd use the move generator
+		hasLegalMove := false
+
+		// Quick check: try to find at least one legal move
+		for fromRank := 0; fromRank < 8 && !hasLegalMove; fromRank++ {
+			for fromFile := 0; fromFile < 8 && !hasLegalMove; fromFile++ {
+				piece := b.GetPiece(fromRank, fromFile)
+
+				// Skip empty squares and opponent pieces
+				if piece == Empty || (piece < BP) != b.WhiteToMove {
+					continue
+				}
+
+				// Try a few potential moves for this piece
+				for toRank := 0; toRank < 8 && !hasLegalMove; toRank++ {
+					for toFile := 0; toFile < 8 && !hasLegalMove; toFile++ {
+						if fromRank == toRank && fromFile == toFile {
+							continue
+						}
+
+						// Test if this would be a legal move (simplified test)
+						targetPiece := b.GetPiece(toRank, toFile)
+						if targetPiece != Empty && (targetPiece < BP) == b.WhiteToMove {
+							continue // Can't capture own piece
+						}
+
+						// Try the move temporarily
+						b.Squares[toRank][toFile].Piece = piece
+						b.Squares[fromRank][fromFile].Piece = Empty
+
+						// Check if still in check after move
+						stillInCheck := b.IsInCheck(b.WhiteToMove)
+
+						// Undo the move
+						b.Squares[fromRank][fromFile].Piece = piece
+						b.Squares[toRank][toFile].Piece = targetPiece
+
+						if !stillInCheck {
+							hasLegalMove = true
+						}
+					}
+				}
+			}
+		}
+
+		if !hasLegalMove {
+			return true // Stalemate
+		}
+	}
+
+	return false
 }
 
 // String returns a string representation of the board with algebraic notation

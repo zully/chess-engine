@@ -1,9 +1,9 @@
-// Chess pieces mapping
+// Chess pieces mapping - using filled Unicode symbols for better appearance
 const PIECE_SYMBOLS = {
-    // White pieces
-    1: '♙', 2: '♘', 3: '♗', 4: '♖', 5: '♕', 6: '♔',
-    // Black pieces  
-    7: '♟', 8: '♞', 9: '♝', 10: '♜', 11: '♛', 12: '♚'
+    // White pieces (filled symbols)
+    1: '♟︎', 2: '♞', 3: '♝', 4: '♜', 5: '♛', 6: '♚',
+    // Black pieces (filled symbols)  
+    7: '♙', 8: '♘', 9: '♗', 10: '♖', 11: '♕', 12: '♔'
 };
 
 const PIECE_NAMES = {
@@ -12,7 +12,6 @@ const PIECE_NAMES = {
 };
 
 let gameState = null;
-let autoPlayInterval = null;
 let boardFlipped = false; // false = white perspective, true = black perspective
 let selectedSquare = null; // Currently selected square for moves
 let draggedPiece = null; // Currently being dragged piece
@@ -24,26 +23,22 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function setupEventListeners() {
-    // Move input and button
-    const moveInput = document.getElementById('move-input');
-    const makeMoveBtn = document.getElementById('make-move-btn');
-    
-    moveInput.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            makeMove();
-        }
-    });
-    
-    makeMoveBtn.addEventListener('click', makeMove);
-    
-    // Control buttons
-    document.getElementById('engine-btn').addEventListener('click', requestEngineMove);
-    document.getElementById('auto-btn').addEventListener('click', toggleAutoPlay);
-    document.getElementById('flip-btn').addEventListener('click', flipBoard);
-    document.getElementById('reset-btn').addEventListener('click', resetGame);
-    
-    // Set initial flip button text
-    document.getElementById('flip-btn').textContent = 'View as Black';
+    try {
+        // Control buttons
+        document.getElementById('engine-btn').addEventListener('click', requestEngineMove);
+        document.getElementById('undo-btn').addEventListener('click', undoLastMove);
+        document.getElementById('flip-btn').addEventListener('click', flipBoard);
+        document.getElementById('reset-btn').addEventListener('click', resetGame);
+        
+        // Engine checkboxes
+        document.getElementById('engine-white-checkbox').addEventListener('change', handleEngineCheckboxChange);
+        document.getElementById('engine-black-checkbox').addEventListener('change', handleEngineCheckboxChange);
+        
+        // Set initial flip button text
+        document.getElementById('flip-btn').textContent = 'View as Black';
+    } catch (error) {
+        console.error('Error setting up event listeners:', error);
+    }
 }
 
 async function loadGameState() {
@@ -52,6 +47,7 @@ async function loadGameState() {
         gameState = await response.json();
         updateDisplay();
     } catch (error) {
+        console.error('Failed to load game state:', error);
         showMessage('Failed to load game state: ' + error.message, 'error');
     }
 }
@@ -65,6 +61,10 @@ function updateDisplay() {
     renderBoard();
     updateMoveHistory();
     updateGameMessage();
+    updateButtonStates();
+    
+    // Check if we should make an automatic engine move
+    checkForAutomaticEngineMove();
 }
 
 function renderCoordinates() {
@@ -175,15 +175,15 @@ function highlightKingInCheck() {
     squares.forEach(square => {
         const piece = square.querySelector('.piece');
         if (piece) {
-            // Check if it's a king of the current player
             const squareData = getSquareData(square.dataset.rank, square.dataset.file);
             if (squareData && squareData.Piece) {
-                const isWhiteKing = squareData.Piece === 1;
-                const isBlackKing = squareData.Piece === 7;
+                const isWhiteKing = squareData.Piece === 6; // WK = 6
+                const isBlackKing = squareData.Piece === 12; // BK = 12
                 
+                // The player whose turn it is is the one in check
                 if ((gameState.board.WhiteToMove && isWhiteKing) || 
                     (!gameState.board.WhiteToMove && isBlackKing)) {
-                    square.classList.add('check');
+                    piece.classList.add('check');
                 }
             }
         }
@@ -204,7 +204,8 @@ function handleDragStart(e) {
         fromFile: parseInt(square.dataset.file)
     };
     
-    // Visual feedback
+    // Enhanced visual feedback
+    e.target.classList.add('dragging');
     square.classList.add('dragging-from');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', square.dataset.square);
@@ -239,9 +240,10 @@ function handleDrop(e) {
     draggedPiece = null;
 }
 
-function handleSquareClick(square) {
+function handleSquareClick(event) {
     if (gameState.gameOver) return;
     
+    const square = event.currentTarget;
     const piece = square.querySelector('.piece');
     
     // If clicking on empty square and we have a selected piece, try to move
@@ -356,29 +358,8 @@ function getPieceType(pieceValue) {
 }
 
 function highlightPossibleMoves(fromSquare) {
-    // This is a simplified version - highlights empty squares and opponent pieces
-    // In a full implementation, you'd calculate actual legal moves
-    const squares = document.querySelectorAll('.square');
-    const fromSquareData = getSquareDataBySquare(fromSquare);
-    if (!fromSquareData) return;
-    
-    const isWhitePiece = fromSquareData.Piece <= 6;
-    
-    squares.forEach(square => {
-        if (square.dataset.square === fromSquare) return;
-        
-        const squareData = getSquareData(square.dataset.rank, square.dataset.file);
-        
-        // Highlight empty squares or squares with opponent pieces
-        if (!squareData || squareData.Piece === 0) {
-            square.classList.add('possible-move');
-        } else {
-            const isTargetWhite = squareData.Piece <= 6;
-            if (isWhitePiece !== isTargetWhite) {
-                square.classList.add('possible-move');
-            }
-        }
-    });
+    // Disabled - no visible dots during drag
+    return;
 }
 
 function getSquareDataBySquare(squareNotation) {
@@ -399,7 +380,12 @@ function getSquareDataBySquare(squareNotation) {
 function clearHighlights() {
     const squares = document.querySelectorAll('.square');
     squares.forEach(square => {
-        square.classList.remove('dragging-from', 'possible-move', 'drag-over');
+        square.classList.remove('dragging-from', 'possible-move', 'drag-over', 'check');
+        // Also remove dragging and check classes from any pieces
+        const piece = square.querySelector('.piece');
+        if (piece) {
+            piece.classList.remove('dragging', 'check');
+        }
     });
 }
 
@@ -473,9 +459,18 @@ function updateGameMessage() {
     if (gameState.error) {
         message = gameState.error;
         messageClass = 'error';
+    } else if (gameState.draw) {
+        message = `Draw! ${gameState.drawReason}`;
+        messageClass = 'success';
     } else if (gameState.isCheckmate) {
         messageClass = 'success';
     } else if (gameState.inCheck) {
+        messageClass = 'warning';
+    } else if (gameState.threefoldRep) {
+        message += ` (Position repeated ${gameState.positionCount} times - draw available!)`;
+        messageClass = 'warning';
+    } else if (gameState.positionCount >= 2) {
+        message += ` (Position repeated ${gameState.positionCount} times)`;
         messageClass = 'warning';
     }
     
@@ -483,41 +478,50 @@ function updateGameMessage() {
     messageDiv.textContent = message;
 }
 
-async function makeMove() {
-    const moveInput = document.getElementById('move-input');
-    const move = moveInput.value.trim();
+function updateButtonStates() {
+    const undoBtn = document.getElementById('undo-btn');
     
-    if (!move) {
-        showMessage('Please enter a move', 'error');
-        return;
-    }
+    // Enable undo button only if there are moves to undo and game is not over
+    const canUndo = gameState.board && 
+                   gameState.board.MovesPlayed && 
+                   gameState.board.MovesPlayed.length > 0 && 
+                   !gameState.gameOver;
     
-    const makeMoveBtn = document.getElementById('make-move-btn');
-    makeMoveBtn.disabled = true;
-    makeMoveBtn.classList.add('loading');
+    console.log('Debug undo button:', {
+        hasBoard: !!gameState.board,
+        hasMoves: gameState.board?.MovesPlayed?.length > 0,
+        movesCount: gameState.board?.MovesPlayed?.length,
+        gameOver: gameState.gameOver,
+        canUndo: canUndo
+    });
     
-    try {
-        const response = await fetch('/api/move', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ move: move }),
-        });
-        
-        gameState = await response.json();
-        
-        if (gameState.error) {
-            showMessage(gameState.error, 'error');
-        } else {
-            moveInput.value = '';
-            updateDisplay();
-        }
-    } catch (error) {
-        showMessage('Failed to make move: ' + error.message, 'error');
-    } finally {
-        makeMoveBtn.disabled = false;
-        makeMoveBtn.classList.remove('loading');
+    undoBtn.disabled = !canUndo;
+}
+
+// makeMove function removed - using drag-and-drop only
+
+function handleEngineCheckboxChange() {
+    // When checkboxes change, check if we should make an automatic move
+    checkForAutomaticEngineMove();
+}
+
+function shouldEnginePlay(isWhite) {
+    const whiteCheckbox = document.getElementById('engine-white-checkbox');
+    const blackCheckbox = document.getElementById('engine-black-checkbox');
+    
+    return isWhite ? whiteCheckbox.checked : blackCheckbox.checked;
+}
+
+async function checkForAutomaticEngineMove() {
+    // Don't make automatic moves if game is over
+    if (!gameState || gameState.gameOver) return;
+    
+    // Check if current player should be played by engine
+    if (shouldEnginePlay(gameState.board.WhiteToMove)) {
+        // Small delay to allow UI updates
+        setTimeout(() => {
+            requestEngineMove();
+        }, 500);
     }
 }
 
@@ -549,41 +553,37 @@ async function requestEngineMove() {
     }
 }
 
-function toggleAutoPlay() {
-    const autoBtn = document.getElementById('auto-btn');
+async function undoLastMove() {
+    if (gameState.gameOver) {
+        showMessage('Cannot undo in finished game. Reset to start over.', 'error');
+        return;
+    }
     
-    if (autoPlayInterval) {
-        // Stop auto play
-        clearInterval(autoPlayInterval);
-        autoPlayInterval = null;
-        autoBtn.textContent = 'Auto Play';
-        autoBtn.style.background = '#ffc107';
+    if (!gameState.board || !gameState.board.MovesPlayed || gameState.board.MovesPlayed.length === 0) {
+        showMessage('No moves to undo!', 'error');
+        return;
+    }
+    
+    try {
+        showMessage('Undoing last move...', 'info');
+        const response = await fetch('/api/undo', {
+            method: 'POST'
+        });
         
-        // Re-enable other buttons
-        document.getElementById('make-move-btn').disabled = false;
-        document.getElementById('engine-btn').disabled = false;
-        document.getElementById('reset-btn').disabled = false;
-        document.getElementById('move-input').disabled = false;
-    } else {
-        // Start auto play
-        autoBtn.textContent = 'Stop Auto';
-        autoBtn.style.background = '#dc3545';
+        gameState = await response.json();
+        updateDisplay();
         
-        // Disable other buttons during auto play
-        document.getElementById('make-move-btn').disabled = true;
-        document.getElementById('engine-btn').disabled = true;
-        document.getElementById('reset-btn').disabled = true;
-        document.getElementById('move-input').disabled = true;
-        
-        autoPlayInterval = setInterval(async () => {
-            if (gameState && !gameState.gameOver) {
-                await requestEngineMove();
-            } else {
-                toggleAutoPlay(); // Stop if game is over
-            }
-        }, 2000); // 2 second delay between moves
+        if (gameState.error) {
+            showMessage('Undo failed: ' + gameState.error, 'error');
+        } else {
+            showMessage('Move undone!', 'success');
+        }
+    } catch (error) {
+        showMessage('Failed to undo move: ' + error.message, 'error');
     }
 }
+
+// toggleAutoPlay function removed - no auto play button
 
 function flipBoard() {
     boardFlipped = !boardFlipped;
@@ -598,11 +598,6 @@ async function resetGame() {
     resetBtn.disabled = true;
     resetBtn.classList.add('loading');
     
-    // Stop auto play if running
-    if (autoPlayInterval) {
-        toggleAutoPlay();
-    }
-    
     try {
         const response = await fetch('/api/reset', {
             method: 'POST',
@@ -613,9 +608,6 @@ async function resetGame() {
         
         gameState = await response.json();
         updateDisplay();
-        
-        // Clear move input
-        document.getElementById('move-input').value = '';
         
         showMessage('Game reset successfully', 'success');
     } catch (error) {

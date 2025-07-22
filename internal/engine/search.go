@@ -22,6 +22,8 @@ type moveInfo struct {
 	wasWhiteToMove  bool
 	oldEnPassant    string
 	enPassantSquare *board.Square // Square where en passant pawn was removed
+	positionHash    uint64        // Hash of position before move
+	positionCount   int           // Count of position before move
 }
 
 // SearchResult contains the best move and its evaluation score
@@ -46,6 +48,11 @@ func FindBestMove(b *board.Board, depth int) SearchResult {
 
 // minimax implements the minimax algorithm with alpha-beta pruning
 func minimax(b *board.Board, depth int, alpha, beta int, maximizingPlayer bool) (bool, moves.Move, int) {
+	// Check for immediate draw conditions
+	if b.IsDraw() {
+		return true, moves.Move{}, 0 // Draw is always 0
+	}
+
 	// Base case: reached maximum depth or game over
 	if depth == 0 {
 		score := Evaluate(b)
@@ -288,11 +295,16 @@ func makeMove(b *board.Board, move moves.Move) *moveInfo {
 		return nil
 	}
 
-	// Store move info for undo
+	// Store move info for undo, including position history state
+	positionHash := b.GetPositionHash()
+	positionCount := b.PositionHistory[positionHash]
+
 	undoInfo := &moveInfo{
 		capturedPiece:  toSquare.Piece,
 		wasWhiteToMove: b.WhiteToMove,
 		oldEnPassant:   b.EnPassant,
+		positionHash:   positionHash,
+		positionCount:  positionCount,
 	}
 
 	// Clear en passant target
@@ -335,6 +347,9 @@ func makeMove(b *board.Board, move moves.Move) *moveInfo {
 	// Switch turns
 	b.WhiteToMove = !b.WhiteToMove
 
+	// Record the new position for repetition detection during search
+	b.RecordPosition()
+
 	return undoInfo
 }
 
@@ -345,6 +360,16 @@ func undoMove(b *board.Board, move moves.Move, undoInfo *moveInfo) {
 
 	if fromSquare == nil || toSquare == nil || undoInfo == nil {
 		return
+	}
+
+	// Remove the current position from history
+	currentHash := b.GetPositionHash()
+	if count, exists := b.PositionHistory[currentHash]; exists && count > 0 {
+		if count == 1 {
+			delete(b.PositionHistory, currentHash)
+		} else {
+			b.PositionHistory[currentHash] = count - 1
+		}
 	}
 
 	// Restore the board position
@@ -362,6 +387,13 @@ func undoMove(b *board.Board, move moves.Move, undoInfo *moveInfo) {
 
 	// Restore turn
 	b.WhiteToMove = undoInfo.wasWhiteToMove
+
+	// Restore position history count
+	if undoInfo.positionCount > 0 {
+		b.PositionHistory[undoInfo.positionHash] = undoInfo.positionCount
+	} else {
+		delete(b.PositionHistory, undoInfo.positionHash)
+	}
 }
 
 // Global variable to store the last move for undo (simple implementation)

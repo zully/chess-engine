@@ -94,6 +94,11 @@ var kingEndTable = [64]int{
 // Evaluate returns a score for the current board position.
 // Positive scores favor white, negative scores favor black.
 func Evaluate(b *board.Board) int {
+	// Check for immediate draws
+	if b.IsDraw() {
+		return 0 // Draw is always scored as 0
+	}
+
 	score := 0
 
 	// Material evaluation
@@ -107,6 +112,22 @@ func Evaluate(b *board.Board) int {
 
 	// Mobility evaluation (piece activity)
 	score += evaluateMobility(b)
+
+	// Repetition avoidance - penalize approaching threefold repetition
+	positionCount := b.GetPositionCount()
+	if positionCount >= 2 {
+		// If we're about to repeat the position for the third time,
+		// heavily penalize unless we're losing
+		repetitionPenalty := -100 // Moderate penalty for repetition
+		if score > 0 {
+			// If we're winning, avoid repetition more strongly
+			repetitionPenalty = -200
+		} else if score < -500 {
+			// If we're losing badly, repetition might be good (avoid penalty)
+			repetitionPenalty = 0
+		}
+		score += repetitionPenalty
+	}
 
 	// Adjust score based on whose turn it is
 	if !b.WhiteToMove {

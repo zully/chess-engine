@@ -373,6 +373,18 @@ func (b *Board) MakeMove(notation string) error {
 	// Switch turns
 	b.WhiteToMove = !b.WhiteToMove
 
+	// Record the position for repetition detection
+	b.RecordPosition()
+
+	// Check for draw conditions
+	if b.IsDraw() {
+		if b.IsThreefoldRepetition() {
+			fmt.Println("Draw by threefold repetition!")
+		} else {
+			fmt.Println("Draw by stalemate!")
+		}
+	}
+
 	// Check if the opponent is in check after this move
 	if b.IsInCheck(b.WhiteToMove) {
 		// Check if it's checkmate

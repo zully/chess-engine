@@ -6,4 +6,4 @@ echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-go run cmd/webserver.go 
+go run cmd/main.go 

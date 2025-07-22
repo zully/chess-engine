@@ -1,50 +1,62 @@
 # Chess Engine
 
-A fully functional chess engine and CLI implemented in Go. Play chess in your terminal with proper move validation, check/checkmate detection, and standard algebraic notation.
+A fully functional chess engine with a modern web-based GUI implemented in Go. Play chess in your browser with complete rule validation, intelligent AI opponent, and all standard chess features.
 
 ## Features
 
 ### 🎯 **Complete Chess Implementation**
-- **All piece movements**: Pawns (including en passant rules), Knights, Bishops, Rooks, Queens, Kings
-- **Special moves**: Pawn captures, two-square pawn moves from starting position
-- **Move validation**: Ensures all moves follow chess rules
+- **All piece movements**: Pawns, Knights, Bishops, Rooks, Queens, Kings with proper rules
+- **Special moves**: En passant, castling (kingside and queenside), pawn promotion (to any piece)
+- **Move validation**: Comprehensive rule enforcement including check/checkmate detection
+- **Drag-and-drop interface**: Intuitive click-and-drag piece movement
 - **Turn-based gameplay**: Proper alternating turns between White and Black
 
-### ♔ **Game State Detection**
-- **Check detection**: Immediate notification when king is in check
-- **Checkmate detection**: Full algorithm that verifies no legal escape moves exist
-- **Standard notation**: Moves marked with `+` for check, `#` for checkmate
+### 🤖 **Intelligent AI Engine**
+- **Smart opponent**: AI that plays strategically using minimax with alpha-beta pruning
+- **Position evaluation**: Advanced scoring with material, positional, and king safety factors
+- **Opening knowledge**: Database of good opening moves for stronger early game play
+- **Difficulty scaling**: Configurable search depth for different skill levels
+- **Draw awareness**: Threefold repetition detection and stalemate recognition
 
-### 🎮 **Professional CLI Interface**
-- **Beautiful ASCII board**: Clean visual representation with coordinates
-- **Move history**: Side-by-side display showing all played moves
-- **Algebraic notation**: Standard chess notation (e4, Nf3, Qxf7+, etc.)
-- **Real-time feedback**: Clear error messages and game state updates
+### 🎮 **Modern Web Interface**
+- **Beautiful visual board**: Clean, responsive design that works on desktop and mobile
+- **Real-time updates**: Live game state with immediate feedback
+- **Move history**: Complete game record with standard algebraic notation
+- **Interactive controls**: Engine moves, auto-play mode, board flipping, game reset
+- **Status indicators**: Clear notifications for check, checkmate, draws, and game state
 
-### ⚙️ **Engine Components**
-- **Position evaluation**: Material and positional scoring with piece-square tables
-- **Move generation**: Infrastructure for generating all legal moves
-- **Modular design**: Clean separation of concerns across packages
+### ⚡ **Advanced Features**
+- **Threefold repetition**: Automatic draw detection when positions repeat
+- **Position tracking**: Real-time monitoring of position frequency
+- **Strategic repetition**: Engine avoids repetition when winning, allows it when losing
+- **Board orientation**: Flip board to play from either perspective
+- **Game management**: Save/restore game state, move validation, error handling
 
 ## Project Structure
 
 ```
 chess-engine/
 ├── cmd/
-│   └── main.go              # CLI interface and game loop
+│   └── main.go              # Web server and API endpoints
 ├── internal/
 │   ├── board/
-│   │   ├── board.go         # Board representation and display
-│   │   ├── coordinates.go   # Square coordinate utilities  
+│   │   ├── board.go         # Board representation and position tracking
+│   │   ├── coordinates.go   # Square coordinate utilities
 │   │   ├── moves.go         # Move execution and validation
 │   │   └── piece_moves.go   # Individual piece movement rules
 │   ├── engine/
-│   │   ├── evaluation.go    # Position evaluation with piece-square tables
-│   │   └── movegen.go       # Move generation framework
+│   │   ├── evaluation.go    # Position evaluation with advanced heuristics
+│   │   ├── search.go        # Minimax search with alpha-beta pruning
+│   │   └── movegen.go       # Complete legal move generation
 │   └── moves/
 │       └── moves.go         # Algebraic notation parsing
+├── web/
+│   └── static/
+│       ├── chess.css        # Modern responsive styling
+│       └── chess.js         # Interactive frontend logic
 ├── test/
 │   └── engine_test.go       # Unit tests
+├── start-web.sh             # Quick start script
 ├── go.mod
 └── go.sum
 ```
@@ -55,62 +67,71 @@ chess-engine/
 ```bash
 git clone https://github.com/zully/chess-engine.git
 cd chess-engine
-go build cmd/main.go
 ```
 
-### Run the Game
+### Start the Game
 ```bash
+# Option 1: Use the quick start script
+chmod +x start-web.sh
+./start-web.sh
+
+# Option 2: Run directly
 go run cmd/main.go
 ```
 
-### How to Play
-- Enter moves in standard algebraic notation:
-  - Pawn moves: `e4`, `d5`
-  - Piece moves: `Nf3`, `Bb5`  
-  - Captures: `exd5`, `Bxf7`
-  - Castling: `O-O`, `O-O-O`
+### Play Chess
+1. **Open your browser** to `http://localhost:8080`
+2. **Play moves** by clicking and dragging pieces or typing in algebraic notation
+3. **Challenge the AI** by clicking "Engine Move" 
+4. **Enable auto-play** to watch the computer play both sides
+5. **Flip the board** to play from Black's perspective
 
-- Other commands:
-  - `help` - Show available commands
-  - `display` - Redraw the board
-  - `eval` - Show position evaluation
-  - `quit` - Exit the game
+### Game Controls
+- **Manual Move**: Type moves like `e4`, `Nf3`, `O-O`, `exd5`, `a1=Q`
+- **Drag & Drop**: Click and drag pieces to move them
+- **Engine Move**: Let the AI make a move for the current player
+- **Auto Play**: Computer plays both sides automatically
+- **Flip Board**: Change perspective between White and Black
+- **Reset Game**: Start a new game
 
-## Example Game
+## Example Game Features
 
+### Smart Move Input
 ```
-Chess Engine CLI
-Type 'help' for available commands
-
-     a    b    c    d    e    f    g    h             Moves: (none)
-   +----+----+----+----+----+----+----+----+
- 8 | BR | BN | BB | BQ | BK | BB | BN | BR | 8
-   +----+----+----+----+----+----+----+----+
- 7 | BP | BP | BP | BP | BP | BP | BP | BP | 7
-   +----+----+----+----+----+----+----+----+
-...
-
-White to move
-> e4
-Played e4
-
-> e5  
-Played e5
-
-> Qh5
-Checkmate! Black is checkmated!
-Played Qxf7#
-
-Black to move - CHECKMATE!
+Manual moves: e4, d6, Nf3, Nf6, Bc4, Bg4
+Engine suggestions with evaluation scores
+Drag-and-drop piece movement
 ```
+
+### Intelligent AI
+- **Opening play**: Develops pieces logically in the opening
+- **Tactical awareness**: Finds checks, captures, and threats
+- **Strategic depth**: Long-term planning with configurable search depth
+- **Endgame knowledge**: Improved king activity in simplified positions
+
+### Advanced Rule Support
+- **En passant captures**: Automatic detection and execution
+- **Castling**: Both kingside (O-O) and queenside (O-O-O) supported
+- **Pawn promotion**: Promote to Queen, Rook, Bishop, or Knight
+- **Draw detection**: Threefold repetition and stalemate recognition
+
+## API Endpoints
+
+The web server provides RESTful API endpoints:
+
+- `GET /api/state` - Get current game state
+- `POST /api/move` - Make a player move
+- `POST /api/engine` - Request engine move
+- `POST /api/reset` - Reset the game
 
 ## Technical Highlights
 
-- **1,500+ lines** of clean, well-structured Go code
-- **Zero external dependencies** - pure Go implementation
-- **Comprehensive move validation** for all piece types
-- **Efficient checkmate detection** using minimax-style move testing
-- **Professional CLI experience** with formatted board display
+- **2,000+ lines** of clean, well-structured Go code
+- **Zero external dependencies** - pure Go implementation with native HTTP server
+- **Complete chess rules** including all special moves and draw conditions
+- **Advanced AI** with minimax search, alpha-beta pruning, and position evaluation
+- **Modern web interface** with responsive design and intuitive controls
+- **Real-time updates** using REST API with JSON communication
 
 ## Development
 
@@ -124,16 +145,17 @@ go test ./...
 go build ./...
 ```
 
-## Roadmap
+### Development Server
+```bash
+go run cmd/main.go
+# Server starts on http://localhost:8080
+```
 
-- [ ] Complete move generation for AI opponents
-- [ ] Implement search algorithms (minimax, alpha-beta pruning)
-- [ ] Add castling support
-- [ ] Implement en passant captures
-- [ ] Add pawn promotion
-- [ ] Create opening book
-- [ ] Add time controls
-- [ ] UCI protocol support
+## Browser Compatibility
+
+- **Chrome/Safari/Firefox**: Full support for all features
+- **Mobile browsers**: Responsive design works on phones and tablets
+- **Touch devices**: Drag-and-drop optimized for touch screens
 
 ## Contributing
 
