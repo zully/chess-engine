@@ -2,6 +2,8 @@
 package engine
 
 import (
+	"fmt"
+
 	"github.com/zully/chess-engine/internal/board"
 )
 
@@ -118,6 +120,11 @@ func Evaluate(b *board.Board) int {
 	// CRITICAL: Tactical evaluation with MASSIVE penalties for hanging pieces
 	tacticalScore := evaluateTactics(b)
 	score += tacticalScore * 3 // Amplify tactical penalties by 3x - strong but not extreme
+
+	if tacticalScore != 0 {
+		fmt.Printf("🔍 EVALUATE: tacticalScore=%d, amplified=%d, finalScore=%d\n",
+			tacticalScore, tacticalScore*3, score)
+	}
 
 	// Repetition avoidance - penalize approaching threefold repetition
 	positionCount := b.GetPositionCount()
@@ -375,18 +382,26 @@ func evaluateMobility(b *board.Board) int {
 func evaluateTactics(b *board.Board) int {
 	score := 0
 
+	// DEBUG: Log when tactical evaluation is called
+	fmt.Printf("🔍 TACTICAL EVAL: Evaluating position\n")
+
 	// EMERGENCY FIX: Absolutely prevent queen from going to g5 if knight on f3
 	g5Square := b.GetSquare("g5")
 	f3Square := b.GetSquare("f3")
 
 	if g5Square != nil && f3Square != nil {
+		fmt.Printf("🔍 TACTICAL EVAL: g5=%v (piece=%d), f3=%v (piece=%d)\n",
+			g5Square.Name, g5Square.Piece, f3Square.Name, f3Square.Piece)
+
 		// Black queen on g5, white knight on f3 - MASSIVE PENALTY
 		if g5Square.Piece == board.BQ && f3Square.Piece == board.WN {
 			score -= 50000 // CATASTROPHIC penalty for Black queen on g5
+			fmt.Printf("🚨 TACTICAL EVAL: APPLIED 50000 PENALTY for Black queen on g5!\n")
 		}
 		// White queen on g5, black knight on f3 - MASSIVE PENALTY
 		if g5Square.Piece == board.WQ && f3Square.Piece == board.BN {
 			score += 50000 // CATASTROPHIC penalty for White queen on g5
+			fmt.Printf("🚨 TACTICAL EVAL: APPLIED 50000 PENALTY for White queen on g5!\n")
 		}
 	}
 
@@ -395,11 +410,15 @@ func evaluateTactics(b *board.Board) int {
 	g5Piece := b.GetPiece(3, 6) // g5 = rank 3, file 6
 	f3Piece := b.GetPiece(5, 5) // f3 = rank 5, file 5
 
+	fmt.Printf("🔍 TACTICAL EVAL: Direct coords - g5Piece=%d, f3Piece=%d\n", g5Piece, f3Piece)
+
 	if g5Piece == board.BQ && f3Piece == board.WN {
 		score -= 100000 // ULTIMATE penalty
+		fmt.Printf("🚨 TACTICAL EVAL: APPLIED 100000 PENALTY (coords)!\n")
 	}
 	if g5Piece == board.WQ && f3Piece == board.BN {
 		score += 100000 // ULTIMATE penalty
+		fmt.Printf("🚨 TACTICAL EVAL: APPLIED 100000 PENALTY (coords)!\n")
 	}
 
 	// Check all pieces for hanging (undefended and attacked)
