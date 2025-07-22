@@ -677,6 +677,11 @@ func getDisambiguation(b *board.Board, move moves.Move) string {
 		return ""
 	}
 
+	// Queens and Kings NEVER need disambiguation - there's only one per side!
+	if move.Piece == "Q" || move.Piece == "K" {
+		return ""
+	}
+
 	// Get source and destination coordinates
 	fromRank := 7 - int(move.From[1]-'1')
 	fromFile := int(move.From[0] - 'a')

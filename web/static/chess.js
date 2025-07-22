@@ -297,21 +297,22 @@ function constructMoveFromClick(fromSquare, toSquare) {
 function constructMove(fromSquare, toSquare) {
     if (fromSquare === toSquare) return null;
     
-    console.log(`Constructing move from ${fromSquare} to ${toSquare}`); // Debug log
+    console.log(`🔍 DEBUGGING: Constructing move from ${fromSquare} to ${toSquare}`);
     
     // Get piece data using the square names directly from board
     const fromSquareData = getSquareDataBySquare(fromSquare);
     if (!fromSquareData || !fromSquareData.Piece || fromSquareData.Piece === 0) {
-        console.log('No piece found at from square'); // Debug log
+        console.log('❌ DEBUGGING: No piece found at from square');
         return null;
     }
     
     const pieceType = getPieceType(fromSquareData.Piece);
-    console.log(`Moving piece type: ${pieceType} (value: ${fromSquareData.Piece})`); // Debug log
+    console.log(`🎯 DEBUGGING: Moving piece type: ${pieceType} (value: ${fromSquareData.Piece})`);
     
     // Check if it's a capture
     const toSquareData = getSquareDataBySquare(toSquare);
     const isCapture = toSquareData && toSquareData.Piece && toSquareData.Piece !== 0;
+    console.log(`⚔️ DEBUGGING: Is capture: ${isCapture}`);
     
     // Special case for castling
     if (pieceType === 'K') {
@@ -340,15 +341,22 @@ function constructMove(fromSquare, toSquare) {
             move += '=Q';
         }
     } else {
-        // Other pieces - just use the simple notation
+        // 🚨 POTENTIAL BUG AREA - Other pieces 
+        console.log(`🏗️ DEBUGGING: Building notation for ${pieceType}`);
         move = pieceType;
+        
+        // 🚨 CHECK: Is there disambiguation logic here that shouldn't be?
+        console.log(`📝 DEBUGGING: Move so far: "${move}"`);
+        
         if (isCapture) {
             move += 'x';
+            console.log(`⚔️ DEBUGGING: Added capture, move now: "${move}"`);
         }
         move += toSquare;
+        console.log(`🎯 DEBUGGING: Added target square, final move: "${move}"`);
     }
     
-    console.log(`Constructed move notation: "${move}"`); // Debug log
+    console.log(`✅ DEBUGGING: Constructed move notation: "${move}"`);
     return move;
 }
 
