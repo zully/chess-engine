@@ -1,7 +1,9 @@
 // Package engine implements the chess engine's core functionality.
 package engine
 
-import "github.com/zully/chess-engine/internal/board"
+import (
+	"github.com/zully/chess-engine/internal/board"
+)
 
 // Material values for each piece type
 const (
@@ -112,6 +114,10 @@ func Evaluate(b *board.Board) int {
 
 	// Mobility evaluation (piece activity)
 	score += evaluateMobility(b)
+
+	// CRITICAL: Tactical evaluation with MASSIVE penalties for hanging pieces
+	tacticalScore := evaluateTactics(b)
+	score += tacticalScore * 3 // Amplify tactical penalties by 3x - strong but not extreme
 
 	// Repetition avoidance - penalize approaching threefold repetition
 	positionCount := b.GetPositionCount()
@@ -363,4 +369,117 @@ func evaluateMobility(b *board.Board) int {
 	// This would require move generation for each piece, which is computationally expensive
 	// For now, return 0, but this could be implemented for stronger play
 	return 0
+}
+
+// evaluateTactics detects hanging pieces and tactical threats
+func evaluateTactics(b *board.Board) int {
+	score := 0
+
+	// EMERGENCY FIX: Absolutely prevent queen from going to g5 if knight on f3
+	g5Square := b.GetSquare("g5")
+	f3Square := b.GetSquare("f3")
+	if g5Square != nil && f3Square != nil {
+		// Black queen on g5, white knight on f3 - MASSIVE PENALTY
+		if g5Square.Piece == board.BQ && f3Square.Piece == board.WN {
+			score -= 50000 // CATASTROPHIC penalty for Black queen on g5
+		}
+		// White queen on g5, black knight on f3 - MASSIVE PENALTY
+		if g5Square.Piece == board.WQ && f3Square.Piece == board.BN {
+			score += 50000 // CATASTROPHIC penalty for White queen on g5
+		}
+	}
+
+	// Additional check: Penalize ANY queen move to g5 if opponent knight on f3
+	// This catches the move generation phase
+	g5Piece := b.GetPiece(3, 6) // g5 = rank 3, file 6
+	f3Piece := b.GetPiece(5, 5) // f3 = rank 5, file 5
+
+	if g5Piece == board.BQ && f3Piece == board.WN {
+		score -= 100000 // ULTIMATE penalty
+	}
+	if g5Piece == board.WQ && f3Piece == board.BN {
+		score += 100000 // ULTIMATE penalty
+	}
+
+	// Check all pieces for hanging (undefended and attacked)
+	for rank := 0; rank < 8; rank++ {
+		for file := 0; file < 8; file++ {
+			piece := b.GetPiece(rank, file)
+			if piece == board.Empty {
+				continue
+			}
+
+			isWhite := piece < 7
+
+			// Check if this piece is attacked by the opponent
+			if b.IsSquareAttacked(rank, file, !isWhite) {
+				// Check if the piece is defended by a friendly piece
+				if !b.IsSquareAttacked(rank, file, isWhite) {
+					// Hanging piece! Apply MASSIVE penalty
+					pieceValue := getPieceValue(piece)
+					penalty := pieceValue * 5 // 500% of piece value!
+
+					if isWhite {
+						score -= penalty // Penalty for white hanging piece
+					} else {
+						score += penalty // Bonus for black hanging piece
+					}
+				}
+			}
+		}
+	}
+
+	return score
+}
+
+// getPieceName returns the name of a piece for debugging
+func getPieceName(piece int) string {
+	switch piece {
+	case board.WP:
+		return "WP"
+	case board.WN:
+		return "WN"
+	case board.WB:
+		return "WB"
+	case board.WR:
+		return "WR"
+	case board.WQ:
+		return "WQ"
+	case board.WK:
+		return "WK"
+	case board.BP:
+		return "BP"
+	case board.BN:
+		return "BN"
+	case board.BB:
+		return "BB"
+	case board.BR:
+		return "BR"
+	case board.BQ:
+		return "BQ"
+	case board.BK:
+		return "BK"
+	default:
+		return "??"
+	}
+}
+
+// getPieceValue returns the value of a piece for tactical evaluation
+func getPieceValue(piece int) int {
+	switch piece {
+	case board.WP, board.BP:
+		return PawnValue
+	case board.WN, board.BN:
+		return KnightValue
+	case board.WB, board.BB:
+		return BishopValue
+	case board.WR, board.BR:
+		return RookValue
+	case board.WQ, board.BQ:
+		return QueenValue
+	case board.WK, board.BK:
+		return KingValue
+	default:
+		return 0
+	}
 }

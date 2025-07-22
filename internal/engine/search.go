@@ -18,12 +18,13 @@ func abs(x int) int {
 
 // moveInfo stores information needed to undo a move
 type moveInfo struct {
-	capturedPiece   int
-	wasWhiteToMove  bool
-	oldEnPassant    string
-	enPassantSquare *board.Square // Square where en passant pawn was removed
-	positionHash    uint64        // Hash of position before move
-	positionCount   int           // Count of position before move
+	capturedPiece     int
+	wasWhiteToMove    bool
+	oldEnPassant      string
+	enPassantSquare   *board.Square // Square where en passant pawn was removed
+	oldCastlingRights int           // Castling rights before move
+	positionHash      uint64        // Hash of position before move
+	positionCount     int           // Count of position before move
 }
 
 // SearchResult contains the best move and its evaluation score
@@ -32,22 +33,37 @@ type SearchResult struct {
 	Score    int
 }
 
-// FindBestMove searches for the best move using minimax with alpha-beta pruning
-func FindBestMove(b *board.Board, depth int) SearchResult {
+// FindBestMove searches for the best move using iterative deepening and optimized search
+func FindBestMove(b *board.Board, maxDepth int) SearchResult {
 	// Check for opening book moves first
 	if openingMove := getOpeningMove(b); openingMove != nil {
 		return SearchResult{BestMove: *openingMove, Score: 0}
 	}
 
-	_, bestMove, score := minimax(b, depth, -math.MaxInt32, math.MaxInt32, b.WhiteToMove)
+	var bestMove moves.Move
+	var bestScore int
+
+	// Iterative deepening - search progressively deeper
+	// This allows us to use results from shallower searches to order moves better
+	for currentDepth := 1; currentDepth <= maxDepth; currentDepth++ {
+		_, move, score := minimax(b, currentDepth, -math.MaxInt32, math.MaxInt32, b.WhiteToMove, bestMove)
+
+		// Update best move and score
+		bestMove = move
+		bestScore = score
+
+		// For shallow depths, continue immediately
+		// For deeper depths, we have a good move if time becomes an issue
+	}
+
 	return SearchResult{
 		BestMove: bestMove,
-		Score:    score,
+		Score:    bestScore,
 	}
 }
 
-// minimax implements the minimax algorithm with alpha-beta pruning
-func minimax(b *board.Board, depth int, alpha, beta int, maximizingPlayer bool) (bool, moves.Move, int) {
+// minimax implements the minimax algorithm with alpha-beta pruning and move ordering
+func minimax(b *board.Board, depth int, alpha, beta int, maximizingPlayer bool, prevBestMove moves.Move) (bool, moves.Move, int) {
 	// Check for immediate draw conditions
 	if b.IsDraw() {
 		return true, moves.Move{}, 0 // Draw is always 0
@@ -55,12 +71,16 @@ func minimax(b *board.Board, depth int, alpha, beta int, maximizingPlayer bool) 
 
 	// Base case: reached maximum depth or game over
 	if depth == 0 {
-		score := Evaluate(b)
+		// Use quiescence search to avoid horizon effects
+		score := quiesceSearch(b, alpha, beta, 0)
 		return false, moves.Move{}, score
 	}
 
 	// Generate all legal moves
 	legalMoves := GenerateMoves(b)
+
+	// Order moves for better alpha-beta pruning
+	legalMoves = orderMoves(legalMoves, b, prevBestMove)
 
 	// Check for checkmate or stalemate
 	if len(legalMoves) == 0 {
@@ -88,7 +108,7 @@ func minimax(b *board.Board, depth int, alpha, beta int, maximizingPlayer bool) 
 			}
 
 			// Recursively evaluate position
-			_, _, score := minimax(b, depth-1, alpha, beta, false)
+			_, _, score := minimax(b, depth-1, alpha, beta, false, moves.Move{})
 
 			// Undo the move
 			undoMove(b, move, undoInfo)
@@ -116,7 +136,7 @@ func minimax(b *board.Board, depth int, alpha, beta int, maximizingPlayer bool) 
 			}
 
 			// Recursively evaluate position
-			_, _, score := minimax(b, depth-1, alpha, beta, true)
+			_, _, score := minimax(b, depth-1, alpha, beta, true, moves.Move{})
 
 			// Undo the move
 			undoMove(b, move, undoInfo)
@@ -300,15 +320,46 @@ func makeMove(b *board.Board, move moves.Move) *moveInfo {
 	positionCount := b.PositionHistory[positionHash]
 
 	undoInfo := &moveInfo{
-		capturedPiece:  toSquare.Piece,
-		wasWhiteToMove: b.WhiteToMove,
-		oldEnPassant:   b.EnPassant,
-		positionHash:   positionHash,
-		positionCount:  positionCount,
+		capturedPiece:     toSquare.Piece,
+		wasWhiteToMove:    b.WhiteToMove,
+		oldEnPassant:      b.EnPassant,
+		oldCastlingRights: b.CastlingRights,
+		positionHash:      positionHash,
+		positionCount:     positionCount,
 	}
 
 	// Clear en passant target
 	b.EnPassant = ""
+
+	// Update castling rights if king or rook moves
+	// We need to create a temporary method call - let me add a helper
+	piece := fromSquare.Piece
+	switch move.From {
+	case "e1": // White king
+		if piece == board.WK {
+			b.CastlingRights &^= 3 // Remove both white castling rights
+		}
+	case "a1": // White queenside rook
+		if piece == board.WR {
+			b.CastlingRights &^= 2 // Remove white queenside
+		}
+	case "h1": // White kingside rook
+		if piece == board.WR {
+			b.CastlingRights &^= 1 // Remove white kingside
+		}
+	case "e8": // Black king
+		if piece == board.BK {
+			b.CastlingRights &^= 12 // Remove both black castling rights
+		}
+	case "a8": // Black queenside rook
+		if piece == board.BR {
+			b.CastlingRights &^= 8 // Remove black queenside
+		}
+	case "h8": // Black kingside rook
+		if piece == board.BR {
+			b.CastlingRights &^= 4 // Remove black kingside
+		}
+	}
 
 	// Handle en passant capture - remove the captured pawn
 	if move.EnPassant {
@@ -385,6 +436,9 @@ func undoMove(b *board.Board, move moves.Move, undoInfo *moveInfo) {
 	// Restore en passant target
 	b.EnPassant = undoInfo.oldEnPassant
 
+	// Restore castling rights
+	b.CastlingRights = undoInfo.oldCastlingRights
+
 	// Restore turn
 	b.WhiteToMove = undoInfo.wasWhiteToMove
 
@@ -394,6 +448,170 @@ func undoMove(b *board.Board, move moves.Move, undoInfo *moveInfo) {
 	} else {
 		delete(b.PositionHistory, undoInfo.positionHash)
 	}
+}
+
+// orderMoves reorders moves to improve alpha-beta pruning effectiveness
+func orderMoves(moveList []moves.Move, b *board.Board, prevBestMove moves.Move) []moves.Move {
+	// Advanced move ordering: prioritize best moves first for better pruning
+	var bestMove []moves.Move
+	var winningCaptures []moves.Move
+	var equalCaptures []moves.Move
+	var checks []moves.Move
+	var regularMoves []moves.Move
+
+	for _, move := range moveList {
+		// Prioritize previous best move first
+		if movesEqual(move, prevBestMove) {
+			bestMove = append(bestMove, move)
+			continue
+		}
+
+		// Check if it's a capture
+		toSquare := b.GetSquare(move.To)
+		if toSquare != nil && toSquare.Piece != board.Empty {
+			fromSquare := b.GetSquare(move.From)
+			if fromSquare != nil {
+				capturedValue := getPieceValueForOrdering(toSquare.Piece)
+				capturingValue := getPieceValueForOrdering(fromSquare.Piece)
+
+				// Good captures: capture higher value with lower value piece
+				if capturedValue >= capturingValue {
+					winningCaptures = append(winningCaptures, move)
+				} else {
+					equalCaptures = append(equalCaptures, move)
+				}
+			}
+			continue
+		}
+
+		// Check if it gives check (expensive but important for move ordering)
+		undoInfo := makeMove(b, move)
+		if undoInfo != nil {
+			givesCheck := b.IsInCheck(b.WhiteToMove)
+			undoMove(b, move, undoInfo)
+
+			if givesCheck {
+				checks = append(checks, move)
+				continue
+			}
+		}
+
+		// Regular moves
+		regularMoves = append(regularMoves, move)
+	}
+
+	// Order: Previous best, winning captures, checks, equal captures, regular moves
+	var orderedMoves []moves.Move
+	orderedMoves = append(orderedMoves, bestMove...)
+	orderedMoves = append(orderedMoves, winningCaptures...)
+	orderedMoves = append(orderedMoves, checks...)
+	orderedMoves = append(orderedMoves, equalCaptures...)
+	orderedMoves = append(orderedMoves, regularMoves...)
+
+	return orderedMoves
+}
+
+// getPieceValueForOrdering returns piece value for move ordering
+func getPieceValueForOrdering(piece int) int {
+	switch piece {
+	case board.WP, board.BP:
+		return 1
+	case board.WN, board.BN, board.WB, board.BB:
+		return 3
+	case board.WR, board.BR:
+		return 5
+	case board.WQ, board.BQ:
+		return 9
+	case board.WK, board.BK:
+		return 100
+	default:
+		return 0
+	}
+}
+
+// movesEqual compares two moves for equality
+func movesEqual(a, b moves.Move) bool {
+	return a.From == b.From && a.To == b.To && a.Piece == b.Piece
+}
+
+// quiesceSearch searches only tactical moves (captures, checks) until position is quiet
+// This prevents horizon effects where the engine misses tactics just beyond search depth
+func quiesceSearch(b *board.Board, alpha, beta int, qDepth int) int {
+	// Limit quiescence search depth to prevent infinite loops
+	if qDepth > 8 {
+		return Evaluate(b)
+	}
+
+	// Get static evaluation as baseline
+	standPat := Evaluate(b)
+
+	// Beta cutoff - this position is already too good for the opponent
+	if standPat >= beta {
+		return beta
+	}
+
+	// Update alpha if we can improve it
+	if standPat > alpha {
+		alpha = standPat
+	}
+
+	// Generate only tactical moves (captures and checks)
+	tacticalMoves := generateTacticalMoves(b)
+
+	// If no tactical moves, return the static evaluation
+	if len(tacticalMoves) == 0 {
+		return standPat
+	}
+
+	// Search all tactical moves
+	for _, move := range tacticalMoves {
+		undoInfo := makeMove(b, move)
+		if undoInfo == nil {
+			continue
+		}
+
+		// Recursively search this tactical line
+		score := -quiesceSearch(b, -beta, -alpha, qDepth+1)
+
+		undoMove(b, move, undoInfo)
+
+		if score >= beta {
+			return beta // Beta cutoff
+		}
+		if score > alpha {
+			alpha = score
+		}
+	}
+
+	return alpha
+}
+
+// generateTacticalMoves generates only captures and checks for quiescence search
+func generateTacticalMoves(b *board.Board) []moves.Move {
+	allMoves := GenerateMoves(b)
+	var tacticalMoves []moves.Move
+
+	for _, move := range allMoves {
+		// Check if it's a capture
+		toSquare := b.GetSquare(move.To)
+		if toSquare != nil && toSquare.Piece != board.Empty {
+			tacticalMoves = append(tacticalMoves, move)
+			continue
+		}
+
+		// Check if it gives check (expensive but important)
+		undoInfo := makeMove(b, move)
+		if undoInfo != nil {
+			givesCheck := b.IsInCheck(b.WhiteToMove)
+			undoMove(b, move, undoInfo)
+
+			if givesCheck {
+				tacticalMoves = append(tacticalMoves, move)
+			}
+		}
+	}
+
+	return tacticalMoves
 }
 
 // Global variable to store the last move for undo (simple implementation)

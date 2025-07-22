@@ -286,6 +286,9 @@ func (b *Board) MakeMove(notation string) error {
 	// Clear en passant target from previous move
 	b.EnPassant = ""
 
+	// Update castling rights if king or rook moves
+	b.updateCastlingRights(move.From, fromSquare.Piece)
+
 	// Handle castling moves specially
 	if move.Castle != "" {
 		b.executeCastling(move.Castle, b.WhiteToMove)
@@ -487,14 +490,66 @@ func (b *Board) canCastle(castleType string, isWhite bool) bool {
 	}
 
 	for file := minFile; file <= maxFile; file++ {
-		if b.isSquareAttacked(kingRank, file, !isWhite) {
+		if b.IsSquareAttacked(kingRank, file, !isWhite) {
 			return false
 		}
 	}
 
-	// TODO: Check castling rights (for now, assume castling is allowed if pieces are in position)
+	// Check castling rights
+	if !b.hasCastlingRights(castleType, isWhite) {
+		return false
+	}
 
 	return true
+}
+
+// hasCastlingRights checks if the player still has the specified castling rights
+func (b *Board) hasCastlingRights(castleType string, isWhite bool) bool {
+	// Castling rights are stored as bits: 0001=WK, 0010=WQ, 0100=BK, 1000=BQ
+	if isWhite {
+		if castleType == "O-O" {
+			return (b.CastlingRights & 1) != 0 // White kingside
+		} else if castleType == "O-O-O" {
+			return (b.CastlingRights & 2) != 0 // White queenside
+		}
+	} else {
+		if castleType == "O-O" {
+			return (b.CastlingRights & 4) != 0 // Black kingside
+		} else if castleType == "O-O-O" {
+			return (b.CastlingRights & 8) != 0 // Black queenside
+		}
+	}
+	return false
+}
+
+// updateCastlingRights removes castling rights when kings or rooks move
+func (b *Board) updateCastlingRights(fromSquare string, piece int) {
+	switch fromSquare {
+	case "e1": // White king
+		if piece == WK {
+			b.CastlingRights &^= 3 // Remove both white castling rights (bits 0 and 1)
+		}
+	case "a1": // White queenside rook
+		if piece == WR {
+			b.CastlingRights &^= 2 // Remove white queenside (bit 1)
+		}
+	case "h1": // White kingside rook
+		if piece == WR {
+			b.CastlingRights &^= 1 // Remove white kingside (bit 0)
+		}
+	case "e8": // Black king
+		if piece == BK {
+			b.CastlingRights &^= 12 // Remove both black castling rights (bits 2 and 3)
+		}
+	case "a8": // Black queenside rook
+		if piece == BR {
+			b.CastlingRights &^= 8 // Remove black queenside (bit 3)
+		}
+	case "h8": // Black kingside rook
+		if piece == BR {
+			b.CastlingRights &^= 4 // Remove black kingside (bit 2)
+		}
+	}
 }
 
 // executeCastling performs the castling move (moves both king and rook)

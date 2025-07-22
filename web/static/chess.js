@@ -1,9 +1,9 @@
-// Chess pieces mapping - using filled Unicode symbols for better appearance
+// Chess pieces mapping - both sets solid for better visibility
 const PIECE_SYMBOLS = {
-    // White pieces (filled symbols)
-    1: '♟︎', 2: '♞', 3: '♝', 4: '♜', 5: '♛', 6: '♚',
-    // Black pieces (filled symbols)  
-    7: '♙', 8: '♘', 9: '♗', 10: '♖', 11: '♕', 12: '♔'
+    // White pieces (solid symbols)
+    1: '♟', 2: '♞', 3: '♝', 4: '♜', 5: '♛', 6: '♚',
+    // Black pieces (solid symbols)  
+    7: '♟', 8: '♞', 9: '♝', 10: '♜', 11: '♛', 12: '♚'
 };
 
 const PIECE_NAMES = {
@@ -139,6 +139,13 @@ function renderBoard() {
                     piece.classList.add('white');
                 } else {
                     piece.classList.add('black');
+                }
+                
+                // Add specific classes for bishops and kings to make them bigger
+                if (squareData.Piece === 3 || squareData.Piece === 9) { // Bishops
+                    piece.classList.add('bishop');
+                } else if (squareData.Piece === 6 || squareData.Piece === 12) { // Kings
+                    piece.classList.add('king');
                 }
                 
                 // Make piece draggable if it's the current player's turn
@@ -463,8 +470,12 @@ function updateGameMessage() {
         message = `Draw! ${gameState.drawReason}`;
         messageClass = 'success';
     } else if (gameState.isCheckmate) {
+        // Use the backend message for checkmate announcement
+        message = gameState.message || 'Checkmate!';
         messageClass = 'success';
     } else if (gameState.inCheck) {
+        // Use the backend message for check announcement  
+        message = gameState.message || 'Check!';
         messageClass = 'warning';
     } else if (gameState.threefoldRep) {
         message += ` (Position repeated ${gameState.positionCount} times - draw available!)`;
@@ -487,13 +498,7 @@ function updateButtonStates() {
                    gameState.board.MovesPlayed.length > 0 && 
                    !gameState.gameOver;
     
-    console.log('Debug undo button:', {
-        hasBoard: !!gameState.board,
-        hasMoves: gameState.board?.MovesPlayed?.length > 0,
-        movesCount: gameState.board?.MovesPlayed?.length,
-        gameOver: gameState.gameOver,
-        canUndo: canUndo
-    });
+
     
     undoBtn.disabled = !canUndo;
 }
@@ -536,7 +541,7 @@ async function requestEngineMove() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ depth: 4 }),
+            body: JSON.stringify({ depth: 6 }),
         });
         
         gameState = await response.json();

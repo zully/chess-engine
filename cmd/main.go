@@ -185,13 +185,44 @@ func makeMove(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		state.Error = err.Error()
 	} else {
-		state.Message = fmt.Sprintf("Played %s", req.Move)
-	}
+		// Update check/checkmate status first
+		state.InCheck = gameBoard.IsInCheck(gameBoard.WhiteToMove)
+		state.IsCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
+		state.GameOver = state.IsCheckmate
 
-	// Update check/checkmate status
-	state.InCheck = gameBoard.IsInCheck(gameBoard.WhiteToMove)
-	state.IsCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
-	state.GameOver = state.IsCheckmate
+		// Check for draws
+		isDraw := gameBoard.IsDraw()
+		drawReason := ""
+		if isDraw {
+			if gameBoard.IsThreefoldRepetition() {
+				drawReason = "Threefold repetition"
+			} else {
+				drawReason = "Stalemate"
+			}
+		}
+		state.Draw = isDraw
+		state.DrawReason = drawReason
+		state.GameOver = state.IsCheckmate || isDraw
+
+		// Set message with check/checkmate/draw announcement
+		if isDraw {
+			state.Message = fmt.Sprintf("Played %s - Draw! %s", req.Move, drawReason)
+		} else if state.IsCheckmate {
+			if gameBoard.WhiteToMove {
+				state.Message = fmt.Sprintf("Played %s - Checkmate! Black wins!", req.Move)
+			} else {
+				state.Message = fmt.Sprintf("Played %s - Checkmate! White wins!", req.Move)
+			}
+		} else if state.InCheck {
+			if gameBoard.WhiteToMove {
+				state.Message = fmt.Sprintf("Played %s - White is in check!", req.Move)
+			} else {
+				state.Message = fmt.Sprintf("Played %s - Black is in check!", req.Move)
+			}
+		} else {
+			state.Message = fmt.Sprintf("Played %s", req.Move)
+		}
+	}
 
 	json.NewEncoder(w).Encode(state)
 }
@@ -207,8 +238,8 @@ func engineMove(w http.ResponseWriter, r *http.Request) {
 	var req EngineRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	depth := 4
-	if req.Depth > 0 && req.Depth <= 8 {
+	depth := 6
+	if req.Depth > 0 && req.Depth <= 10 {
 		depth = req.Depth
 	}
 
@@ -222,15 +253,48 @@ func engineMove(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			state.Error = err.Error()
 		} else {
-			state.Message = fmt.Sprintf("Engine played %s (evaluation: %d)",
+			// Update check/checkmate status first
+			state.InCheck = gameBoard.IsInCheck(gameBoard.WhiteToMove)
+			state.IsCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
+			state.GameOver = state.IsCheckmate
+
+			// Check for draws
+			isDraw := gameBoard.IsDraw()
+			drawReason := ""
+			if isDraw {
+				if gameBoard.IsThreefoldRepetition() {
+					drawReason = "Threefold repetition"
+				} else {
+					drawReason = "Stalemate"
+				}
+			}
+			state.Draw = isDraw
+			state.DrawReason = drawReason
+			state.GameOver = state.IsCheckmate || isDraw
+
+			// Set message with check/checkmate/draw announcement
+			baseMessage := fmt.Sprintf("Engine played %s (evaluation: %d)",
 				formatEngineMove(result.BestMove), result.Score)
+
+			if isDraw {
+				state.Message = baseMessage + " - Draw! " + drawReason
+			} else if state.IsCheckmate {
+				if gameBoard.WhiteToMove {
+					state.Message = baseMessage + " - Checkmate! Black wins!"
+				} else {
+					state.Message = baseMessage + " - Checkmate! White wins!"
+				}
+			} else if state.InCheck {
+				if gameBoard.WhiteToMove {
+					state.Message = baseMessage + " - White is in check!"
+				} else {
+					state.Message = baseMessage + " - Black is in check!"
+				}
+			} else {
+				state.Message = baseMessage
+			}
 		}
 	}
-
-	// Update check/checkmate status
-	state.InCheck = gameBoard.IsInCheck(gameBoard.WhiteToMove)
-	state.IsCheckmate = gameBoard.IsCheckmate(gameBoard.WhiteToMove)
-	state.GameOver = state.IsCheckmate
 
 	json.NewEncoder(w).Encode(state)
 }

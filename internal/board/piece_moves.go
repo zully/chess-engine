@@ -167,8 +167,8 @@ func (b *Board) findKing(isWhite bool) (rank, file int) {
 	return -1, -1 // Should never happen in a valid game
 }
 
-// isSquareAttacked returns true if the given square can be captured by any enemy piece
-func (b *Board) isSquareAttacked(rank, file int, attackerIsWhite bool) bool {
+// IsSquareAttacked returns true if the given square can be captured by any enemy piece
+func (b *Board) IsSquareAttacked(rank, file int, attackerIsWhite bool) bool {
 	// Check for attacking pawns
 	direction := 1
 	if attackerIsWhite {
@@ -266,7 +266,7 @@ func (b *Board) isSquareAttacked(rank, file int, attackerIsWhite bool) bool {
 // IsInCheck returns true if the specified color's king is in check
 func (b *Board) IsInCheck(isWhite bool) bool {
 	kingRank, kingFile := b.findKing(isWhite)
-	return b.isSquareAttacked(kingRank, kingFile, !isWhite)
+	return b.IsSquareAttacked(kingRank, kingFile, !isWhite)
 }
 
 // IsCheckmate returns true if the specified color is in checkmate
