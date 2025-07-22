@@ -378,6 +378,7 @@ func evaluateTactics(b *board.Board) int {
 	// EMERGENCY FIX: Absolutely prevent queen from going to g5 if knight on f3
 	g5Square := b.GetSquare("g5")
 	f3Square := b.GetSquare("f3")
+
 	if g5Square != nil && f3Square != nil {
 		// Black queen on g5, white knight on f3 - MASSIVE PENALTY
 		if g5Square.Piece == board.BQ && f3Square.Piece == board.WN {
