@@ -1,9 +1,19 @@
-// Chess pieces mapping - both sets solid for better visibility
-const PIECE_SYMBOLS = {
-    // White pieces (solid symbols)
-    1: '♟', 2: '♞', 3: '♝', 4: '♜', 5: '♛', 6: '♚',
-    // Black pieces (solid symbols)  
-    7: '♟', 8: '♞', 9: '♝', 10: '♜', 11: '♛', 12: '♚'
+// Chess pieces mapping - now using SVG files
+const PIECE_IMAGES = {
+    // White pieces
+    1: '/static/pieces/Chess_plt45.svg',  // White Pawn
+    2: '/static/pieces/Chess_nlt45.svg',  // White Knight
+    3: '/static/pieces/Chess_blt45.svg',  // White Bishop
+    4: '/static/pieces/Chess_rlt45.svg',  // White Rook
+    5: '/static/pieces/Chess_qlt45.svg',  // White Queen
+    6: '/static/pieces/Chess_klt45.svg',  // White King
+    // Black pieces
+    7: '/static/pieces/Chess_pdt45.svg',  // Black Pawn
+    8: '/static/pieces/Chess_ndt45.svg',  // Black Knight
+    9: '/static/pieces/Chess_bdt45.svg',  // Black Bishop
+    10: '/static/pieces/Chess_rdt45.svg', // Black Rook
+    11: '/static/pieces/Chess_qdt45.svg', // Black Queen
+    12: '/static/pieces/Chess_kdt45.svg'  // Black King
 };
 
 const PIECE_NAMES = {
@@ -41,15 +51,100 @@ function setupEventListeners() {
     }
 }
 
-async function loadGameState() {
-    try {
-        const response = await fetch('/api/state');
-        gameState = await response.json();
-        updateDisplay();
-    } catch (error) {
-        console.error('Failed to load game state:', error);
-        showMessage('Failed to load game state: ' + error.message, 'error');
-    }
+// API Functions
+function loadGameState() {
+    fetch('/api/state')
+        .then(response => response.json())
+        .then(data => {
+            gameState = data;
+            updateGameState(data);
+        })
+        .catch(error => {
+            console.error('Error loading game state:', error);
+            document.getElementById('game-message').textContent = 'Error loading game state: ' + error.message;
+        });
+}
+
+function makeMove(move) {
+    fetch('/api/move', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({move: move})
+    })
+    .then(response => response.json())
+    .then(data => {
+        gameState = data;
+        updateGameState(data);
+        clearSelection();
+    })
+    .catch(error => {
+        console.error('Error making move:', error);
+        document.getElementById('game-message').textContent = 'Error making move: ' + error.message;
+    });
+}
+
+function requestEngineMove() {
+    const eloSelect = document.getElementById('elo-select');
+    const selectedElo = parseInt(eloSelect.value);
+    
+    const requestData = {
+        depth: 6,
+        elo: selectedElo
+    };
+
+    fetch('/api/engine', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        gameState = data;
+        updateGameState(data);
+        clearSelection();
+    })
+    .catch(error => {
+        console.error('Error requesting engine move:', error);
+        document.getElementById('game-message').textContent = 'Error with engine move: ' + error.message;
+    });
+}
+
+function undoMove() {
+    fetch('/api/undo', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        gameState = data;
+        updateGameState(data);
+        clearSelection();
+    })
+    .catch(error => {
+        console.error('Error undoing move:', error);
+        document.getElementById('game-message').textContent = 'Error undoing move: ' + error.message;
+    });
+}
+
+function resetGame() {
+    fetch('/api/reset', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        gameState = data;
+        updateGameState(data);
+        clearSelection();
+        isFlipped = false;
+        updateBoard(data.board);
+    })
+    .catch(error => {
+        console.error('Error resetting game:', error);
+        document.getElementById('game-message').textContent = 'Error resetting game: ' + error.message;
+    });
 }
 
 function updateDisplay() {
@@ -61,7 +156,6 @@ function updateDisplay() {
     renderBoard();
     updateMoveHistory();
     updateGameMessage();
-    updateButtonStates();
     updateEvaluationBar();
     updateCapturedPieces();
     
@@ -73,12 +167,14 @@ function renderCoordinates() {
     // Render rank labels to match board orientation
     const rankLabels = document.getElementById('rank-labels-left');
     rankLabels.innerHTML = '';
+    
     // White perspective: 8 at top, 1 at bottom
     // Black perspective: 1 at top, 8 at bottom  
     const rankNumbers = boardFlipped ? ['1','2','3','4','5','6','7','8'] : ['8','7','6','5','4','3','2','1'];
     
     rankNumbers.forEach(rank => {
         const div = document.createElement('div');
+        div.className = 'rank-label';
         div.textContent = rank;
         rankLabels.appendChild(div);
     });
@@ -90,81 +186,65 @@ function renderCoordinates() {
     
     fileLetters.forEach(file => {
         const div = document.createElement('div');
+        div.className = 'file-label';
         div.textContent = file;
         fileLabels.appendChild(div);
     });
 }
 
 function renderBoard() {
+    if (!gameState || !gameState.board) return;
+    
+    renderCoordinates();
+    
     const board = document.getElementById('chess-board');
     board.innerHTML = '';
     
-    if (!gameState.board || !gameState.board.Squares) {
-        showMessage('No board data available', 'error');
-        return;
-    }
+    const squares = gameState.board.Squares || [];
     
-    // Render coordinate labels
-    renderCoordinates();
-    
-    // Determine rank and file order based on board orientation
-    // For white perspective: show rank 8 at top, rank 1 at bottom
-    // For black perspective: show rank 1 at top, rank 8 at bottom
-    const ranks = boardFlipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
-    const files = boardFlipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
-    
-    // Create squares
-    for (let rankIdx = 0; rankIdx < 8; rankIdx++) {
-        for (let fileIdx = 0; fileIdx < 8; fileIdx++) {
-            const rank = ranks[rankIdx];
-            const file = files[fileIdx];
+    for (let rank = 0; rank < 8; rank++) {
+        for (let file = 0; file < 8; file++) {
             const square = document.createElement('div');
-            square.className = 'square';
-            square.dataset.rank = rank;
-            square.dataset.file = file;
-            // Convert array indices back to algebraic notation
-            square.dataset.square = String.fromCharCode(97 + file) + (8 - rank);
-            
-            // Add light/dark class
             const isLight = (rank + file) % 2 === 0;
-            square.classList.add(isLight ? 'light' : 'dark');
             
-            // Get piece from board data
-            const squareData = gameState.board.Squares[rank][file];
+            // Adjust for perspective - determine display position
+            let displayRank = rank;
+            let displayFile = file;
+            
+            if (boardFlipped) {
+                displayRank = 7 - rank;
+                displayFile = 7 - file;
+            }
+            
+            square.className = `square ${isLight ? 'light' : 'dark'}`;
+            square.dataset.rank = displayRank;
+            square.dataset.file = displayFile;
+            square.dataset.square = String.fromCharCode(97 + displayFile) + (8 - displayRank);
+            
+            // Add piece if present
+            const squareData = squares[rank] && squares[rank][file];
             if (squareData && squareData.Piece && squareData.Piece !== 0) {
-                const piece = document.createElement('span');
+                const piece = document.createElement('img');
                 piece.className = 'piece';
-                piece.textContent = PIECE_SYMBOLS[squareData.Piece] || '?';
+                piece.src = PIECE_IMAGES[squareData.Piece];
+                piece.alt = PIECE_NAMES[squareData.Piece];
+                piece.draggable = true;
                 
-                // Add color class
-                if (squareData.Piece <= 6) {
+                // Add color class for styling if needed
+                if (squareData.Piece < 7) {
                     piece.classList.add('white');
                 } else {
                     piece.classList.add('black');
                 }
                 
-                // Add specific classes for bishops and kings to make them bigger
-                if (squareData.Piece === 3 || squareData.Piece === 9) { // Bishops
-                    piece.classList.add('bishop');
-                } else if (squareData.Piece === 6 || squareData.Piece === 12) { // Kings
-                    piece.classList.add('king');
-                }
-                
-                // Make piece draggable if it's the current player's turn
-                const isWhitePiece = squareData.Piece <= 6;
-                const isCurrentPlayerPiece = (gameState.board.WhiteToMove && isWhitePiece) || 
-                                           (!gameState.board.WhiteToMove && !isWhitePiece);
-                
-                if (isCurrentPlayerPiece && !gameState.gameOver) {
-                    piece.draggable = true;
-                    piece.addEventListener('dragstart', handleDragStart);
-                    square.classList.add('draggable');
-                }
+                // Add drag event listeners
+                piece.addEventListener('dragstart', handleDragStart);
+                piece.addEventListener('dragend', handleDragEnd);
                 
                 square.appendChild(piece);
             }
             
-            // Add click and drop handlers
+            // Add event listeners to squares
             square.addEventListener('click', handleSquareClick);
             square.addEventListener('dragover', handleDragOver);
             square.addEventListener('drop', handleDrop);
@@ -184,15 +264,16 @@ function highlightKingInCheck() {
     squares.forEach(square => {
         const piece = square.querySelector('.piece');
         if (piece) {
-            const squareData = getSquareData(square.dataset.rank, square.dataset.file);
-            if (squareData && squareData.Piece) {
-                const isWhiteKing = squareData.Piece === 6; // WK = 6
-                const isBlackKing = squareData.Piece === 12; // BK = 12
+            const squareData = getSquareDataBySquare(square.dataset.square);
+            if (squareData) {
+                const isKing = (squareData.Piece === 6 || squareData.Piece === 12); // White or Black King
+                const isCurrentPlayerKing = (gameState.board.WhiteToMove && squareData.Piece === 6) || 
+                                          (!gameState.board.WhiteToMove && squareData.Piece === 12);
                 
-                // The player whose turn it is is the one in check
-                if ((gameState.board.WhiteToMove && isWhiteKing) || 
-                    (!gameState.board.WhiteToMove && isBlackKing)) {
+                if (isKing && isCurrentPlayerKing) {
                     piece.classList.add('check');
+                } else {
+                    piece.classList.remove('check');
                 }
             }
         }
@@ -205,24 +286,52 @@ function getSquareData(rank, file) {
 }
 
 function handleDragStart(e) {
-    const square = e.target.parentElement;
+    if (!gameState || gameState.gameOver) {
+        e.preventDefault();
+        return;
+    }
+    
+    const piece = e.target;
+    const square = piece.parentElement;
+    const squareNotation = square.dataset.square;
+    
+    // Check if it's the current player's turn
+    const pieceData = getSquareDataBySquare(squareNotation);
+    if (!pieceData || pieceData.Piece === 0) {
+        e.preventDefault();
+        return;
+    }
+    
+    const isWhitePiece = pieceData.Piece < 7;
+    const isCurrentPlayerTurn = gameState.board.WhiteToMove === isWhitePiece;
+    
+    if (!isCurrentPlayerTurn) {
+        e.preventDefault();
+        return;
+    }
+    
     draggedPiece = {
-        element: e.target,
-        fromSquare: square.dataset.square,
-        fromRank: parseInt(square.dataset.rank),
-        fromFile: parseInt(square.dataset.file)
+        element: piece,
+        from: squareNotation,
+        pieceType: pieceData.Piece
     };
     
-    // Enhanced visual feedback
-    e.target.classList.add('dragging');
-    square.classList.add('dragging-from');
+    piece.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', square.dataset.square);
+    e.dataTransfer.setData('text/plain', squareNotation);
+}
+
+function handleDragEnd(e) {
+    if (draggedPiece) {
+        draggedPiece.element.classList.remove('dragging');
+        draggedPiece = null;
+    }
     
-    // Add some visual feedback
-    setTimeout(() => {
-        highlightPossibleMoves(square.dataset.square);
-    }, 0);
+    // Clear any drag-over highlights
+    const squares = document.querySelectorAll('.square');
+    squares.forEach(square => {
+        square.classList.remove('drag-over');
+    });
 }
 
 function handleDragOver(e) {
@@ -235,48 +344,233 @@ function handleDrop(e) {
     
     if (!draggedPiece) return;
     
-    const toSquare = e.currentTarget;
-    const move = constructMoveFromDrag(draggedPiece.fromSquare, toSquare.dataset.square);
+    const targetSquare = e.currentTarget;
+    const toSquare = targetSquare.dataset.square;
+    const fromSquare = draggedPiece.from;
     
-    // Clear visual feedback
-    clearHighlights();
-    
-    if (move) {
-        // Execute the move
-        executeMoveFromGUI(move);
-    }
-    
-    draggedPiece = null;
-}
-
-function handleSquareClick(event) {
-    if (gameState.gameOver) return;
-    
-    const square = event.currentTarget;
-    const piece = square.querySelector('.piece');
-    
-    // If clicking on empty square and we have a selected piece, try to move
-    if (selectedSquare && square !== selectedSquare) {
-        const move = constructMoveFromClick(selectedSquare.dataset.square, square.dataset.square);
-        if (move) {
-            executeMoveFromGUI(move);
-        }
-        clearSelection();
+    if (fromSquare === toSquare) {
+        handleDragEnd(e);
         return;
     }
     
-    // If clicking on a piece that can be moved
-    if (piece && canMovePiece(square)) {
-        // Clear previous selection
-        clearSelection();
-        
-        // Select this square
-        selectedSquare = square;
-        square.classList.add('selected');
-        highlightPossibleMoves(square.dataset.square);
-    } else {
-        clearSelection();
+    // Construct proper algebraic move
+    const move = constructAlgebraicMove(fromSquare, toSquare);
+    if (move) {
+        makeMove(move);
     }
+    
+    handleDragEnd(e);
+}
+
+function handleSquareClick(event) {
+    const square = event.currentTarget;
+    const squareNotation = square.dataset.square;
+    
+    if (!gameState || gameState.gameOver) {
+        return;
+    }
+    
+    // If no square is selected, select this square if it has a piece
+    if (!selectedSquare) {
+        const squareData = getSquareDataBySquare(squareNotation);
+        if (squareData && squareData.Piece !== 0) {
+            // Check if it's the current player's piece
+            const isWhitePiece = squareData.Piece < 7;
+            const isCurrentPlayerTurn = gameState.board.WhiteToMove === isWhitePiece;
+            
+            if (isCurrentPlayerTurn) {
+                selectedSquare = square;
+                square.classList.add('selected');
+            }
+        }
+    } else {
+        // A square is already selected, try to make a move
+        const fromSquare = selectedSquare.dataset.square;
+        const toSquare = squareNotation;
+        
+        // Clear selection
+        selectedSquare.classList.remove('selected');
+        selectedSquare = null;
+        
+        if (fromSquare !== toSquare) {
+            // Try to make the move using algebraic notation
+            const move = constructAlgebraicMove(fromSquare, toSquare);
+            if (move) {
+                makeMove(move);
+            }
+        }
+    }
+}
+
+function constructAlgebraicMove(fromSquare, toSquare) {
+    // Get piece information from the from square
+    const fromSquareData = getSquareDataBySquare(fromSquare);
+    if (!fromSquareData || fromSquareData.Piece === 0) {
+        return null;
+    }
+    
+    const pieceType = getPieceType(fromSquareData.Piece);
+    const isWhitePiece = fromSquareData.Piece < 7;
+    
+    // Special case for castling
+    if (pieceType === 'K') {
+        if (fromSquare === 'e1' && toSquare === 'g1') return 'O-O';
+        if (fromSquare === 'e1' && toSquare === 'c1') return 'O-O-O';
+        if (fromSquare === 'e8' && toSquare === 'g8') return 'O-O';
+        if (fromSquare === 'e8' && toSquare === 'c8') return 'O-O-O';
+    }
+    
+    // For pawns, just return the target square (e.g., "e4")
+    if (pieceType === 'P') {
+        // Check if it's a capture
+        const toSquareData = getSquareDataBySquare(toSquare);
+        if (toSquareData && toSquareData.Piece !== 0) {
+            // Pawn capture: include from file (e.g., "exd5")
+            return fromSquare[0] + 'x' + toSquare;
+        } else {
+            // Check for en passant capture
+            // (simplified - the backend will handle the complexity)
+            return toSquare;
+        }
+    } else {
+        // For other pieces, check if disambiguation is needed
+        const toSquareData = getSquareDataBySquare(toSquare);
+        const isCapture = toSquareData && toSquareData.Piece !== 0;
+        
+        // Check if there are other pieces of the same type that could also move to this square
+        const disambiguation = getDisambiguation(fromSquare, toSquare, pieceType, isWhitePiece);
+        
+        let move = pieceType;
+        if (disambiguation) {
+            move += disambiguation;
+        }
+        if (isCapture) {
+            move += 'x';
+        }
+        move += toSquare;
+        
+        return move;
+    }
+}
+
+// Helper function to determine if disambiguation is needed and what form it should take
+function getDisambiguation(fromSquare, toSquare, pieceType, isWhitePiece) {
+    if (!gameState || !gameState.board) return '';
+    
+    const fromFile = fromSquare[0];
+    const fromRank = fromSquare[1];
+    const squares = gameState.board.Squares;
+    
+    // Find all other pieces of the same type and color that could move to the target square
+    const conflictingPieces = [];
+    
+    for (let rank = 0; rank < 8; rank++) {
+        for (let file = 0; file < 8; file++) {
+            const square = squares[rank][file];
+            if (!square || square.Piece === 0) continue;
+            
+            const squarePieceType = getPieceType(square.Piece);
+            const squareIsWhite = square.Piece < 7;
+            
+            // Skip if not the same piece type and color
+            if (squarePieceType !== pieceType || squareIsWhite !== isWhitePiece) continue;
+            
+            const squareName = square.Name;
+            // Skip the piece we're actually moving
+            if (squareName === fromSquare) continue;
+            
+            // Check if this piece could also move to the target square
+            if (canPieceMoveTo(squareName, toSquare, pieceType)) {
+                conflictingPieces.push(squareName);
+            }
+        }
+    }
+    
+    // If no conflicting pieces, no disambiguation needed
+    if (conflictingPieces.length === 0) {
+        return '';
+    }
+    
+    // Check if file disambiguation is sufficient
+    const sameFile = conflictingPieces.some(square => square[0] === fromFile);
+    if (!sameFile) {
+        return fromFile; // Use file letter (e.g., "Ra" in "Rae8")
+    }
+    
+    // Check if rank disambiguation is sufficient
+    const sameRank = conflictingPieces.some(square => square[1] === fromRank);
+    if (!sameRank) {
+        return fromRank; // Use rank number (e.g., "R1" in "R1e8")
+    }
+    
+    // If both file and rank have conflicts, use both (rare case)
+    return fromSquare; // Use full square (e.g., "Ra1" in "Ra1e8")
+}
+
+// Helper function to check if a piece at a given square can move to a target square
+function canPieceMoveTo(fromSquare, toSquare, pieceType) {
+    const fromSquareData = getSquareDataBySquare(fromSquare);
+    if (!fromSquareData || fromSquareData.Piece === 0) return false;
+    
+    const fromFile = fromSquare.charCodeAt(0) - 97; // a=0, b=1, etc.
+    const fromRank = 8 - parseInt(fromSquare[1]);   // 1=7, 2=6, ..., 8=0
+    const toFile = toSquare.charCodeAt(0) - 97;
+    const toRank = 8 - parseInt(toSquare[1]);
+    
+    // Basic movement validation (simplified)
+    switch (pieceType) {
+        case 'N': // Knight
+            const rankDiff = Math.abs(toRank - fromRank);
+            const fileDiff = Math.abs(toFile - fromFile);
+            return (rankDiff === 2 && fileDiff === 1) || (rankDiff === 1 && fileDiff === 2);
+            
+        case 'B': // Bishop
+            const bishopRankDiff = Math.abs(toRank - fromRank);
+            const bishopFileDiff = Math.abs(toFile - fromFile);
+            if (bishopRankDiff !== bishopFileDiff) return false;
+            return isPathClear(fromRank, fromFile, toRank, toFile);
+            
+        case 'R': // Rook
+            if (fromRank !== toRank && fromFile !== toFile) return false;
+            return isPathClear(fromRank, fromFile, toRank, toFile);
+            
+        case 'Q': // Queen
+            const queenRankDiff = Math.abs(toRank - fromRank);
+            const queenFileDiff = Math.abs(toFile - fromFile);
+            const isDiagonal = queenRankDiff === queenFileDiff;
+            const isStraight = fromRank === toRank || fromFile === toFile;
+            if (!isDiagonal && !isStraight) return false;
+            return isPathClear(fromRank, fromFile, toRank, toFile);
+            
+        case 'K': // King
+            const kingRankDiff = Math.abs(toRank - fromRank);
+            const kingFileDiff = Math.abs(toFile - fromFile);
+            return kingRankDiff <= 1 && kingFileDiff <= 1;
+            
+        default:
+            return false;
+    }
+}
+
+// Helper function to check if the path between two squares is clear
+function isPathClear(fromRank, fromFile, toRank, toFile) {
+    if (!gameState || !gameState.board) return false;
+    
+    const rankStep = toRank === fromRank ? 0 : (toRank > fromRank ? 1 : -1);
+    const fileStep = toFile === fromFile ? 0 : (toFile > fromFile ? 1 : -1);
+    
+    let currentRank = fromRank + rankStep;
+    let currentFile = fromFile + fileStep;
+    
+    while (currentRank !== toRank || currentFile !== toFile) {
+        if (gameState.board.Squares[currentRank][currentFile].Piece !== 0) {
+            return false; // Path blocked
+        }
+        currentRank += rankStep;
+        currentFile += fileStep;
+    }
+    
+    return true;
 }
 
 function canMovePiece(square) {
@@ -521,43 +815,6 @@ async function checkForAutomaticEngineMove() {
     }
 }
 
-async function requestEngineMove() {
-    const engineBtn = document.getElementById('engine-btn');
-    engineBtn.disabled = true;
-    engineBtn.classList.add('loading');
-    
-    try {
-        // Get selected ELO rating from dropdown
-        const eloSelect = document.getElementById('elo-select');
-        const selectedElo = parseInt(eloSelect.value) || 0;
-        
-        const requestBody = { depth: 6 };
-        if (selectedElo > 0) {
-            requestBody.elo = selectedElo;
-        }
-        
-        const response = await fetch('/api/engine', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody),
-        });
-        
-        gameState = await response.json();
-        updateDisplay();
-        
-        if (gameState.error) {
-            showMessage(gameState.error, 'error');
-        }
-    } catch (error) {
-        showMessage('Failed to get engine move: ' + error.message, 'error');
-    } finally {
-        engineBtn.disabled = false;
-        engineBtn.classList.remove('loading');
-    }
-}
-
 async function undoLastMove() {
     if (gameState.gameOver) {
         showMessage('Cannot undo in finished game. Reset to start over.', 'error');
@@ -720,5 +977,16 @@ function showMessage(text, type = 'info') {
                 updateGameMessage();
             }
         }, 5000);
+    }
+} 
+
+// Update game state display including Stockfish version
+function updateGameState(data) {
+    // Update the complete display using existing function
+    updateDisplay();
+    
+    // Update Stockfish version
+    if (data.stockfishVersion) {
+        document.getElementById('stockfish-version').textContent = data.stockfishVersion;
     }
 } 

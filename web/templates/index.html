@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Engine GUI</title>
+    <link rel="stylesheet" href="/static/chess.css">
+</head>
+<body>
+    <div class="container">
+        <div class="game-area">
+            <!-- Left Panel: Engine Info, Evaluation, Captured Pieces -->
+            <div class="left-panel">
+                <div class="engine-info">
+                    <h2 id="stockfish-version">Chess Engine GUI</h2>
+                </div>
+                
+                <!-- Engine Strength -->
+                <div class="strength-section">
+                    <h3>Engine Strength</h3>
+                    <label for="elo-select">ELO Rating:</label>
+                    <select id="elo-select">
+                        <option value="0">Maximum Strength (2850+)</option>
+                        <option value="2400">Grandmaster (2400)</option>
+                        <option value="2200">Master (2200)</option>
+                        <option value="2000">Expert (2000)</option>
+                        <option value="1800">Class A (1800)</option>
+                        <option value="1600">Class B (1600)</option>
+                        <option value="1400" selected>Class C (1400)</option>
+                        <option value="1350">Beginner (1350)</option>
+                    </select>
+                </div>
+                
+                <!-- Position Evaluation -->
+                <div class="evaluation-section">
+                    <h3>Position Evaluation</h3>
+                    <div class="evaluation-bar-container">
+                        <div class="evaluation-bar">
+                            <div id="evaluation-fill" class="evaluation-fill"></div>
+                            <div class="evaluation-center-line"></div>
+                        </div>
+                        <div id="evaluation-text" class="evaluation-text">0.00</div>
+                    </div>
+                </div>
+
+                <!-- Captured Pieces -->
+                <div class="captured-section">
+                    <h3>Captured Pieces</h3>
+                    <div class="captured-container">
+                        <div class="captured-side">
+                            <h4>White Captured</h4>
+                            <div id="captured-white" class="captured-pieces"></div>
+                            <div id="captured-white-value" class="captured-value">0</div>
+                        </div>
+                        <div class="captured-side">
+                            <h4>Black Captured</h4>
+                            <div id="captured-black" class="captured-pieces"></div>
+                            <div id="captured-black-value" class="captured-value">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Center: Chess Board -->
+            <div class="board-container">
+                <div class="board-wrapper">
+                    <div id="rank-labels-left" class="rank-labels"></div>
+                    <div class="board-with-files">
+                        <div id="chess-board"></div>
+                        <div id="file-labels-bottom" class="file-labels"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Panel: Controls and Move History -->
+            <div class="controls">
+                <div class="engine-section">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="engine-white-checkbox"> Engine plays White
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="engine-black-checkbox"> Engine plays Black
+                    </label>
+                </div>
+                
+                <div class="button-section">
+                    <button id="engine-btn">Engine Move</button>
+                    <button id="undo-btn">Undo Move</button>
+                    <button id="flip-btn">Flip Board</button>
+                    <button id="reset-btn">Reset Game</button>
+                </div>
+                
+                <div id="game-message" class="message"></div>
+                
+                <div class="moves-section">
+                    <h3>Move History</h3>
+                    <div id="move-history"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/chess.js"></script>
+</body>
+</html> 

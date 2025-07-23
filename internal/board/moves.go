@@ -13,7 +13,7 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 		return "", fmt.Errorf("invalid target square: %s", move.To)
 	}
 
-	targetRank, targetFile := getSquareCoords(move.To)
+	targetRank, targetFile := GetSquareCoords(move.To)
 	if targetRank < 0 || targetRank > 7 || targetFile < 0 || targetFile > 7 {
 		return "", fmt.Errorf("invalid target square: %s [rank %d, file %d]", move.To, targetRank, targetFile)
 	}
@@ -148,19 +148,45 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 	for rank := 0; rank < 8; rank++ {
 		for file := 0; file < 8; file++ {
 			if b.Squares[rank][file].Piece == piece {
+				// If disambiguation is provided, check if this piece matches
+				if move.From != "" && !strings.Contains(move.From, "*") {
+					currentSquare := GetSquareName(rank, file)
+
+					// Handle file disambiguation (e.g., "a" in "Rae8")
+					if len(move.From) == 1 {
+						disambiguationChar := move.From[0]
+						if disambiguationChar >= 'a' && disambiguationChar <= 'h' {
+							// File disambiguation
+							if currentSquare[0] != disambiguationChar {
+								continue // This piece is not on the specified file
+							}
+						} else if disambiguationChar >= '1' && disambiguationChar <= '8' {
+							// Rank disambiguation
+							if currentSquare[1] != disambiguationChar {
+								continue // This piece is not on the specified rank
+							}
+						}
+					} else if len(move.From) == 2 {
+						// Full square disambiguation (rare)
+						if currentSquare != move.From {
+							continue // This is not the specified piece
+						}
+					}
+				}
+
 				// Check if the piece can make the move according to chess rules
 				canMove := false
 				switch pieceType {
 				case "P":
 					canMove = canPawnMove(b, rank, file, targetRank, targetFile, move.Capture)
 				case "N":
-					canMove = canKnightMove(rank, file, targetRank, targetFile)
+					canMove = CanKnightMove(rank, file, targetRank, targetFile)
 				case "B":
-					canMove = canBishopMove(b, rank, file, targetRank, targetFile)
+					canMove = CanBishopMove(b, rank, file, targetRank, targetFile)
 				case "R":
-					canMove = canRookMove(b, rank, file, targetRank, targetFile)
+					canMove = CanRookMove(b, rank, file, targetRank, targetFile)
 				case "Q":
-					canMove = canQueenMove(b, rank, file, targetRank, targetFile)
+					canMove = CanQueenMove(b, rank, file, targetRank, targetFile)
 				case "K":
 					canMove = canKingMove(rank, file, targetRank, targetFile)
 				}
@@ -203,10 +229,10 @@ func (b *Board) MakeMove(notation string) error {
 			// Pawn capture - we know the file but need to find the rank
 			startFile = int(move.From[0] - 'a')
 		} else {
-			startRank, startFile = getSquareCoords(move.From)
+			startRank, startFile = GetSquareCoords(move.From)
 		}
 	}
-	endRank, endFile := getSquareCoords(move.To)
+	endRank, endFile := GetSquareCoords(move.To)
 
 	// If the from square isn't specified or contains wildcard (for piece moves and pawn captures), find it
 	if move.From == "" || strings.Contains(move.From, "*") {
@@ -215,7 +241,7 @@ func (b *Board) MakeMove(notation string) error {
 			return err
 		}
 		move.From = from
-		startRank, startFile = getSquareCoords(from)
+		startRank, startFile = GetSquareCoords(from)
 	}
 
 	// Get the squares
@@ -261,13 +287,13 @@ func (b *Board) MakeMove(notation string) error {
 	case WP, BP:
 		isValid = canPawnMove(b, startRank, startFile, endRank, endFile, move.Capture)
 	case WN, BN:
-		isValid = canKnightMove(startRank, startFile, endRank, endFile)
+		isValid = CanKnightMove(startRank, startFile, endRank, endFile)
 	case WB, BB:
-		isValid = canBishopMove(b, startRank, startFile, endRank, endFile)
+		isValid = CanBishopMove(b, startRank, startFile, endRank, endFile)
 	case WR, BR:
-		isValid = canRookMove(b, startRank, startFile, endRank, endFile)
+		isValid = CanRookMove(b, startRank, startFile, endRank, endFile)
 	case WQ, BQ:
-		isValid = canQueenMove(b, startRank, startFile, endRank, endFile)
+		isValid = CanQueenMove(b, startRank, startFile, endRank, endFile)
 	case WK, BK:
 		// Handle castling moves specially
 		if move.Castle != "" {

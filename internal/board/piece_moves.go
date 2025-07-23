@@ -75,8 +75,8 @@ func canPawnMove(b *Board, fromRank, fromFile, toRank, toFile int, isCapture boo
 	return false
 }
 
-// canBishopMove checks if a bishop can make the given move
-func canBishopMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
+// CanBishopMove checks if a bishop can make the given move
+func CanBishopMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
 	// Must move diagonally
 	rankDiff := abs(toRank - fromRank)
 	fileDiff := abs(toFile - fromFile)
@@ -99,8 +99,8 @@ func canBishopMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
 	return true
 }
 
-// canRookMove checks if a rook can make the given move
-func canRookMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
+// CanRookMove checks if a rook can make the given move
+func CanRookMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
 	// Must move horizontally or vertically
 	if fromRank != toRank && fromFile != toFile {
 		return false
@@ -128,15 +128,14 @@ func canRookMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
 	return true
 }
 
-// canQueenMove checks if a queen can make the given move
-func canQueenMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
-	// Queen combines bishop and rook moves
-	return canBishopMove(b, fromRank, fromFile, toRank, toFile) ||
-		canRookMove(b, fromRank, fromFile, toRank, toFile)
+// CanQueenMove checks if a queen can make the given move
+func CanQueenMove(b *Board, fromRank, fromFile, toRank, toFile int) bool {
+	return CanBishopMove(b, fromRank, fromFile, toRank, toFile) ||
+		CanRookMove(b, fromRank, fromFile, toRank, toFile)
 }
 
-// canKnightMove checks if a knight can make the given move
-func canKnightMove(startRank, startFile, endRank, endFile int) bool {
+// CanKnightMove checks if a knight can make the given move
+func CanKnightMove(startRank, startFile, endRank, endFile int) bool {
 	rankDiff := abs(endRank - startRank)
 	fileDiff := abs(endFile - startFile)
 	return (rankDiff == 2 && fileDiff == 1) || (rankDiff == 1 && fileDiff == 2)
@@ -305,13 +304,13 @@ func (b *Board) IsCheckmate(isWhite bool) bool {
 						isCapture := targetPiece != Empty
 						canMove = canPawnMove(b, fromRank, fromFile, toRank, toFile, isCapture)
 					case WN, BN:
-						canMove = canKnightMove(fromRank, fromFile, toRank, toFile)
+						canMove = CanKnightMove(fromRank, fromFile, toRank, toFile)
 					case WB, BB:
-						canMove = canBishopMove(b, fromRank, fromFile, toRank, toFile)
+						canMove = CanBishopMove(b, fromRank, fromFile, toRank, toFile)
 					case WR, BR:
-						canMove = canRookMove(b, fromRank, fromFile, toRank, toFile)
+						canMove = CanRookMove(b, fromRank, fromFile, toRank, toFile)
 					case WQ, BQ:
-						canMove = canQueenMove(b, fromRank, fromFile, toRank, toFile)
+						canMove = CanQueenMove(b, fromRank, fromFile, toRank, toFile)
 					case WK, BK:
 						canMove = canKingMove(fromRank, fromFile, toRank, toFile)
 					}

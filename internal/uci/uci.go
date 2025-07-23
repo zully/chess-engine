@@ -202,88 +202,7 @@ func (e *Engine) GetBestMove(fen string, depth int) (*EngineMove, error) {
 	return bestMove, nil
 }
 
-// UCIToAlgebraic converts a UCI move to algebraic notation using board state
-func UCIToAlgebraic(uciMove string, fromPiece int, targetPiece int) (string, error) {
-	if len(uciMove) < 4 {
-		return "", fmt.Errorf("invalid UCI move: %s", uciMove)
-	}
-
-	from := uciMove[:2]
-	to := uciMove[2:4]
-
-	if fromPiece == 0 { // Empty
-		return "", fmt.Errorf("no piece at source square %s", from)
-	}
-
-	// Check if it's a capture
-	isCapture := targetPiece != 0 // Not empty
-
-	// Convert based on piece type
-	switch fromPiece {
-	case 1, 7: // WP, BP
-		return convertPawnMove(from, to, isCapture), nil
-	case 2, 8: // WN, BN
-		return "N" + to, nil
-	case 3, 9: // WB, BB
-		return "B" + to, nil
-	case 4, 10: // WR, BR
-		return "R" + to, nil
-	case 5, 11: // WQ, BQ
-		return "Q" + to, nil
-	case 6, 12: // WK, BK
-		// Check for castling
-		if from == "e1" && (to == "g1" || to == "c1") ||
-			from == "e8" && (to == "g8" || to == "c8") {
-			if to[0] == 'g' {
-				return "O-O", nil
-			} else {
-				return "O-O-O", nil
-			}
-		}
-		return "K" + to, nil
-	default:
-		return "", fmt.Errorf("unknown piece type: %d", fromPiece)
-	}
-}
-
-// convertPawnMove handles pawn move conversion
-func convertPawnMove(from, to string, isCapture bool) string {
-	if isCapture {
-		// Pawn captures include the source file
-		return from[:1] + "x" + to
-	}
-	// Regular pawn moves are just the destination
-	return to
-}
-
-// getSquareCoords converts algebraic notation to array coordinates
-func getSquareCoords(square string) (rank int, file int) {
-	if len(square) != 2 {
-		return -1, -1
-	}
-
-	file = int(square[0] - 'a')
-	if file < 0 || file > 7 {
-		return -1, -1
-	}
-
-	rank = 7 - (int(square[1] - '1')) // Convert '1' to array index 7 from bottom
-	if rank < 0 || rank > 7 {
-		return -1, -1
-	}
-
-	return rank, file
-}
-
-// Quit sends quit command to engine
-func (e *Engine) Quit() error {
-	if e.ready {
-		return e.sendCommand("quit")
-	}
-	return nil
-}
-
-// Close closes the engine
+// Close closes the engine process
 func (e *Engine) Close() error {
 	if e.cmd != nil && e.cmd.Process != nil {
 		e.Quit()
@@ -291,6 +210,14 @@ func (e *Engine) Close() error {
 		time.Sleep(100 * time.Millisecond)
 		e.cmd.Process.Kill()
 		e.cmd.Wait()
+	}
+	return nil
+}
+
+// Quit sends quit command to engine
+func (e *Engine) Quit() error {
+	if e.ready {
+		return e.sendCommand("quit")
 	}
 	return nil
 }
@@ -313,24 +240,71 @@ func (e *Engine) SetSkillLevel(level int) error {
 	return e.SetOption("Skill Level", fmt.Sprintf("%d", level))
 }
 
-// SetEloRating sets a target ELO rating for Stockfish (1350-2850)
+// SetEloRating sets the engine strength to a specific ELO rating
 func (e *Engine) SetEloRating(elo int) error {
-	if elo < 1350 || elo > 2850 {
-		return fmt.Errorf("ELO rating must be between 1350 and 2850")
+	if !e.ready {
+		return fmt.Errorf("engine not ready")
 	}
 
-	// Enable UCI_LimitStrength first
-	if err := e.SetOption("UCI_LimitStrength", "true"); err != nil {
+	// Stockfish ELO range is typically 1350-2850
+	if elo < 1350 || elo > 2850 {
+		return fmt.Errorf("ELO rating %d out of range (1350-2850)", elo)
+	}
+
+	// Enable strength limiting
+	if err := e.sendCommand("setoption name UCI_LimitStrength value true"); err != nil {
 		return err
 	}
 
-	// Then set the target ELO
-	return e.SetOption("UCI_Elo", fmt.Sprintf("%d", elo))
+	// Set the ELO rating
+	if err := e.sendCommand(fmt.Sprintf("setoption name UCI_Elo value %d", elo)); err != nil {
+		return err
+	}
+
+	// Also set skill level to a lower value for weaker play
+	// Lower skill levels (0-20) make more errors
+	var skillLevel int
+	switch {
+	case elo <= 1400:
+		skillLevel = 1 // Very weak
+	case elo <= 1600:
+		skillLevel = 3 // Weak
+	case elo <= 1800:
+		skillLevel = 5 // Below average
+	case elo <= 2000:
+		skillLevel = 8 // Average
+	case elo <= 2200:
+		skillLevel = 12 // Good
+	case elo <= 2400:
+		skillLevel = 16 // Strong
+	default:
+		skillLevel = 20 // Maximum skill
+	}
+
+	if err := e.sendCommand(fmt.Sprintf("setoption name Skill Level value %d", skillLevel)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-// DisableStrengthLimit disables ELO limiting (full strength)
+// DisableStrengthLimit disables ELO limiting for full strength play
 func (e *Engine) DisableStrengthLimit() error {
-	return e.SetOption("UCI_LimitStrength", "false")
+	if !e.ready {
+		return fmt.Errorf("engine not ready")
+	}
+
+	// Disable strength limiting
+	if err := e.sendCommand("setoption name UCI_LimitStrength value false"); err != nil {
+		return err
+	}
+
+	// Set skill level to maximum
+	if err := e.sendCommand("setoption name Skill Level value 20"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetEvaluation gets the static evaluation of the current position
@@ -376,4 +350,35 @@ func (e *Engine) GetEvaluation(fen string) (int, error) {
 	}
 
 	return lastScore, nil
+}
+
+// GetEngineInfo gets the Stockfish engine information including version
+func (e *Engine) GetEngineInfo() (string, error) {
+	if !e.ready {
+		return "", fmt.Errorf("engine not ready")
+	}
+
+	// Send UCI command to get engine info
+	if err := e.sendCommand("uci"); err != nil {
+		return "", err
+	}
+
+	var engineInfo string
+
+	// Read the UCI response to get engine name and version
+	for e.stdout.Scan() {
+		line := strings.TrimSpace(e.stdout.Text())
+		if strings.HasPrefix(line, "id name ") {
+			engineInfo = strings.TrimPrefix(line, "id name ")
+		}
+		if line == "uciok" {
+			break
+		}
+	}
+
+	if engineInfo == "" {
+		return "Stockfish (version unknown)", nil
+	}
+
+	return engineInfo, nil
 }

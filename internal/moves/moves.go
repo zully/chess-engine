@@ -91,28 +91,65 @@ func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
 		return move, nil
 	}
 
-	// Handle piece moves (e.g., "Nf3", "Bxe4")
+	// Handle piece moves (e.g., "Nf3", "Bxe4", "Rae8", "R1e8")
 	if len(notation) >= 3 {
 		move.Piece = string(notation[0])
 		idx := 1
 
+		// Handle disambiguation (e.g., "Ra" in "Rae8" or "1" in "R1e8")
+		var disambiguation string
+
+		// Check if there's disambiguation before the capture or target square
+		if idx < len(notation) {
+			char := notation[idx]
+			// Check if it's a file letter (a-h) or rank number (1-8)
+			if (char >= 'a' && char <= 'h') || (char >= '1' && char <= '8') {
+				// Check if the next character is 'x' or if we're near the end
+				if idx+1 < len(notation) && notation[idx+1] == 'x' {
+					// Disambiguation followed by capture (e.g., "Raxe8")
+					disambiguation = string(char)
+					idx++
+				} else if idx+2 < len(notation) {
+					// Check if this looks like disambiguation (e.g., "Rae8" where 'a' is disambiguation)
+					nextChar := notation[idx+1]
+					if (nextChar >= 'a' && nextChar <= 'h') && idx+3 < len(notation) {
+						// This looks like disambiguation + target square (e.g., "Rae8")
+						disambiguation = string(char)
+						idx++
+					} else if (nextChar >= '1' && nextChar <= '8') && idx+2 == len(notation)-1 {
+						// This looks like disambiguation + target square (e.g., "R1e8")
+						disambiguation = string(char)
+						idx++
+					}
+				}
+			}
+		}
+
 		// Handle captures
-		if strings.Contains(notation[idx:], "x") {
+		if idx < len(notation) && notation[idx] == 'x' {
 			move.Capture = true
-			idx = strings.Index(notation, "x") + 1
+			idx++
 		}
 
-		// Get the target square
-		to := notation[len(notation)-2:]
+		// Get the target square (should be the last 2 characters)
+		if idx+1 < len(notation) {
+			to := notation[idx : idx+2]
 
-		// Validate the target square notation
-		if len(to) != 2 ||
-			to[0] < 'a' || to[0] > 'h' ||
-			to[1] < '1' || to[1] > '8' {
-			return nil, fmt.Errorf("invalid target square: %q", to)
+			// Validate the target square notation
+			if len(to) != 2 ||
+				to[0] < 'a' || to[0] > 'h' ||
+				to[1] < '1' || to[1] > '8' {
+				return nil, fmt.Errorf("invalid target square: %q", to)
+			}
+			move.To = to
+
+			// Set disambiguation in the From field if present
+			if disambiguation != "" {
+				move.From = disambiguation
+			}
+
+			return move, nil
 		}
-		move.To = to
-		return move, nil
 	}
 
 	return nil, fmt.Errorf("invalid move notation: %s", notation)

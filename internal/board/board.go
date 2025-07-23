@@ -74,6 +74,42 @@ func PieceToString(piece int) string {
 	}
 }
 
+// GetPieceValue returns the point value of a piece for material calculation
+func GetPieceValue(piece int) int {
+	switch piece {
+	case WP, BP:
+		return 1
+	case WN, BN, WB, BB:
+		return 3
+	case WR, BR:
+		return 5
+	case WQ, BQ:
+		return 9
+	default:
+		return 0
+	}
+}
+
+// GetPieceType returns the piece type as a single letter (P, N, B, R, Q, K)
+func GetPieceType(piece int) string {
+	switch piece {
+	case WP, BP:
+		return "P"
+	case WN, BN:
+		return "N"
+	case WB, BB:
+		return "B"
+	case WR, BR:
+		return "R"
+	case WQ, BQ:
+		return "Q"
+	case WK, BK:
+		return "K"
+	default:
+		return ""
+	}
+}
+
 // NewBoard creates and returns a new board in the initial chess position
 func NewBoard() *Board {
 	b := &Board{
@@ -144,8 +180,8 @@ func (b *Board) GetPiece(rank, file int) int {
 
 // GetSquare returns the square at the given algebraic notation (e.g., "e4")
 func (b *Board) GetSquare(algebraicNotation string) *Square {
-	rank, file := getSquareCoords(algebraicNotation)
-	if rank < 0 || file < 0 || rank > 7 || file > 7 {
+	rank, file := GetSquareCoords(algebraicNotation)
+	if rank < 0 || rank > 7 || file < 0 || file > 7 {
 		return nil
 	}
 	return &b.Squares[rank][file]

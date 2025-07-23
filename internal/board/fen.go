@@ -242,20 +242,3 @@ func fenCharToPiece(char rune) (int, error) {
 		return Empty, fmt.Errorf("invalid piece character: %c", char)
 	}
 }
-
-// ToUCIMoves converts the move history to UCI format
-func (b *Board) ToUCIMoves() []string {
-	// Convert algebraic notation moves to UCI format
-	// This is a simplified conversion - for full accuracy,
-	// you'd need to replay moves and track positions
-	var uciMoves []string
-
-	for _, move := range b.MovesPlayed {
-		// For now, we'll need to track moves in UCI format
-		// This would require updating the move execution to store UCI moves
-		// For the integration, we'll use the existing move history
-		uciMoves = append(uciMoves, move)
-	}
-
-	return uciMoves
-}

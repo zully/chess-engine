@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -13,19 +12,20 @@ import (
 )
 
 type GameState struct {
-	Board         *board.Board    `json:"board"`
-	Message       string          `json:"message"`
-	Error         string          `json:"error,omitempty"`
-	GameOver      bool            `json:"gameOver"`
-	InCheck       bool            `json:"inCheck"`
-	IsCheckmate   bool            `json:"isCheckmate"`
-	Draw          bool            `json:"draw"`
-	DrawReason    string          `json:"drawReason"`
-	ThreefoldRep  bool            `json:"threefoldRepetition"`
-	PositionCount int             `json:"positionCount"`
-	Evaluation    int             `json:"evaluation"`    // Position evaluation in centipawns
-	CapturedWhite []CapturedPiece `json:"capturedWhite"` // Pieces captured by White
-	CapturedBlack []CapturedPiece `json:"capturedBlack"` // Pieces captured by Black
+	Board            *board.Board    `json:"board"`
+	Message          string          `json:"message"`
+	Error            string          `json:"error,omitempty"`
+	GameOver         bool            `json:"gameOver"`
+	InCheck          bool            `json:"inCheck"`
+	IsCheckmate      bool            `json:"isCheckmate"`
+	Draw             bool            `json:"draw"`
+	DrawReason       string          `json:"drawReason"`
+	ThreefoldRep     bool            `json:"threefoldRepetition"`
+	PositionCount    int             `json:"positionCount"`
+	Evaluation       int             `json:"evaluation"`       // Position evaluation in centipawns
+	CapturedWhite    []CapturedPiece `json:"capturedWhite"`    // Pieces captured by White
+	CapturedBlack    []CapturedPiece `json:"capturedBlack"`    // Pieces captured by Black
+	StockfishVersion string          `json:"stockfishVersion"` // Stockfish engine version
 }
 
 type CapturedPiece struct {
@@ -82,101 +82,10 @@ func main() {
 }
 
 func homePage(w http.ResponseWriter, r *http.Request) {
-	tmpl := `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess Engine GUI</title>
-    <link rel="stylesheet" href="/static/chess.css">
-</head>
-<body>
-    <div class="container">
-        <div class="game-area">
-            <div class="board-container">
-                <div class="board-wrapper">
-                    <div id="rank-labels-left" class="rank-labels"></div>
-                    <div class="board-with-files">
-                        <div id="chess-board"></div>
-                        <div id="file-labels-bottom" class="file-labels"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="controls">
-                <h2>Chess Engine GUI (Stockfish)</h2>
-                
-                <!-- Evaluation Bar -->
-                <div class="evaluation-section">
-                    <h3>Position Evaluation</h3>
-                    <div class="evaluation-bar-container">
-                        <div class="evaluation-bar">
-                            <div id="evaluation-fill" class="evaluation-fill"></div>
-                            <div class="evaluation-center-line"></div>
-                        </div>
-                        <div id="evaluation-text" class="evaluation-text">0.00</div>
-                    </div>
-                </div>
+	w.Header().Set("Content-Type", "text/html")
 
-                <!-- Captured Pieces -->
-                <div class="captured-section">
-                    <h3>Captured Pieces</h3>
-                    <div class="captured-container">
-                        <div class="captured-side">
-                            <h4>White Captured</h4>
-                            <div id="captured-white" class="captured-pieces"></div>
-                            <div id="captured-white-value" class="captured-value">0</div>
-                        </div>
-                        <div class="captured-side">
-                            <h4>Black Captured</h4>
-                            <div id="captured-black" class="captured-pieces"></div>
-                            <div id="captured-black-value" class="captured-value">0</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="engine-section">
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="engine-white-checkbox"> Engine plays White
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" id="engine-black-checkbox"> Engine plays Black
-                    </label>
-                </div>
-                <div class="strength-section">
-                    <h3>Engine Strength</h3>
-                    <label for="elo-select">ELO Rating:</label>
-                    <select id="elo-select">
-                        <option value="0">Maximum Strength (2850+)</option>
-                        <option value="2400">Grandmaster (2400)</option>
-                        <option value="2200">Master (2200)</option>
-                        <option value="2000">Expert (2000)</option>
-                        <option value="1800">Class A (1800)</option>
-                        <option value="1600">Class B (1600)</option>
-                        <option value="1400" selected>Class C (1400)</option>
-                        <option value="1200">Class D (1200)</option>
-                        <option value="1000">Beginner (1000)</option>
-                    </select>
-                </div>
-                <div class="button-section">
-                    <button id="engine-btn">Engine Move</button>
-                    <button id="undo-btn">Undo Move</button>
-                    <button id="flip-btn">Flip Board</button>
-                    <button id="reset-btn">Reset Game</button>
-                </div>
-                <div id="game-message" class="message"></div>
-                <div class="moves-section">
-                    <h3>Move History</h3>
-                    <div id="move-history"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <script src="/static/chess.js"></script>
-</body>
-</html>`
-
-	t := template.Must(template.New("home").Parse(tmpl))
-	t.Execute(w, nil)
+	// Serve the HTML template file
+	http.ServeFile(w, r, "web/templates/index.html")
 }
 
 func getGameState(w http.ResponseWriter, r *http.Request) {
@@ -232,6 +141,8 @@ func makeMove(w http.ResponseWriter, r *http.Request) {
 		currentFEN := gameBoard.ToFEN()
 		if eval, err := stockfishEngine.GetEvaluation(currentFEN); err == nil {
 			evaluation = eval
+		} else {
+			fmt.Printf("Warning: Failed to get evaluation: %v\n", err)
 		}
 	}
 
@@ -279,7 +190,12 @@ func engineMove(w http.ResponseWriter, r *http.Request) {
 				fmt.Printf("Set Stockfish ELO to %d\n", req.Elo)
 			}
 		} else {
-			fmt.Printf("Warning: Invalid ELO rating %d (must be 1350-2850)\n", req.Elo)
+			fmt.Printf("Warning: Invalid ELO rating %d (must be 1350-2850), using default strength\n", req.Elo)
+			// Use default strength when invalid ELO is provided
+			err := stockfishEngine.DisableStrengthLimit()
+			if err != nil {
+				fmt.Printf("Warning: Failed to disable strength limit: %v\n", err)
+			}
 		}
 	} else {
 		// Full strength (disable ELO limiting)
@@ -316,14 +232,14 @@ func engineMove(w http.ResponseWriter, r *http.Request) {
 
 	// Convert UCI move to algebraic notation and execute it
 	// First, we need to determine what piece is moving by examining the board
-	fromRank, fromFile := getSquareCoords(bestMove.From)
+	fromRank, fromFile := board.GetSquareCoords(bestMove.From)
 	if fromRank < 0 || fromFile < 0 {
 		state.Error = fmt.Sprintf("Invalid UCI move from square: %s", bestMove.From)
 		json.NewEncoder(w).Encode(state)
 		return
 	}
 
-	toRank, toFile := getSquareCoords(bestMove.To)
+	toRank, toFile := board.GetSquareCoords(bestMove.To)
 	if toRank < 0 || toFile < 0 {
 		state.Error = fmt.Sprintf("Invalid UCI move to square: %s", bestMove.To)
 		json.NewEncoder(w).Encode(state)
@@ -555,60 +471,50 @@ func resetGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resetBtn := "reset-btn"
+	_ = resetBtn // Avoid unused variable
+
+	// Create a new board
 	gameBoard = board.NewBoard()
-	state := GameState{
-		Board:   gameBoard,
-		Message: "Game reset. White to move.",
+
+	// Get initial evaluation
+	evaluation := 0
+	if stockfishEngine != nil {
+		currentFEN := gameBoard.ToFEN()
+		if eval, err := stockfishEngine.GetEvaluation(currentFEN); err == nil {
+			evaluation = eval
+		}
 	}
 
+	// Create complete game state with evaluation
+	state := createCompleteGameState(gameBoard, "Game reset. White to move.", evaluation)
 	json.NewEncoder(w).Encode(state)
-}
-
-// getSquareCoords converts algebraic notation to array coordinates
-func getSquareCoords(square string) (rank int, file int) {
-	if len(square) != 2 {
-		return -1, -1
-	}
-
-	file = int(square[0] - 'a')
-	if file < 0 || file > 7 {
-		return -1, -1
-	}
-
-	rank = 7 - (int(square[1] - '1')) // Convert '1' to array index 7 from bottom
-	if rank < 0 || rank > 7 {
-		return -1, -1
-	}
-
-	return rank, file
 }
 
 // needsDisambiguation checks if there are other pieces of the same type that could move to the same destination
 func needsDisambiguation(b *board.Board, pieceType int, fromRank, fromFile, toRank, toFile int) bool {
-	// Check all squares on the board for pieces of the same type and color
+	// Check for pieces of the same type that could also move to the destination
 	for rank := 0; rank < 8; rank++ {
 		for file := 0; file < 8; file++ {
-			// Skip the current piece
 			if rank == fromRank && file == fromFile {
-				continue
+				continue // Skip the piece we're moving
 			}
 
-			// Check if this square has the same piece type
 			if b.GetPiece(rank, file) != pieceType {
-				continue
+				continue // Not the same piece type
 			}
 
 			// Check if this piece could also move to the same destination
 			canMove := false
 			switch pieceType {
 			case board.WN, board.BN:
-				canMove = canKnightMove(rank, file, toRank, toFile)
+				canMove = board.CanKnightMove(rank, file, toRank, toFile)
 			case board.WB, board.BB:
-				canMove = canBishopMove(b, rank, file, toRank, toFile)
+				canMove = board.CanBishopMove(b, rank, file, toRank, toFile)
 			case board.WR, board.BR:
-				canMove = canRookMove(b, rank, file, toRank, toFile)
+				canMove = board.CanRookMove(b, rank, file, toRank, toFile)
 			case board.WQ, board.BQ:
-				canMove = canQueenMove(b, rank, file, toRank, toFile)
+				canMove = board.CanQueenMove(b, rank, file, toRank, toFile)
 			}
 
 			if canMove {
@@ -620,7 +526,7 @@ func needsDisambiguation(b *board.Board, pieceType int, fromRank, fromFile, toRa
 						return true // Disambiguation needed
 					}
 				} else {
-					return true // Disambiguation needed
+					return true // Empty square, disambiguation needed
 				}
 			}
 		}
@@ -628,134 +534,85 @@ func needsDisambiguation(b *board.Board, pieceType int, fromRank, fromFile, toRa
 	return false
 }
 
-// Piece movement validation functions (simplified versions)
-func canKnightMove(fromRank, fromFile, toRank, toFile int) bool {
-	rankDiff := abs(toRank - fromRank)
-	fileDiff := abs(toFile - fromFile)
-	return (rankDiff == 2 && fileDiff == 1) || (rankDiff == 1 && fileDiff == 2)
-}
-
-func canBishopMove(b *board.Board, fromRank, fromFile, toRank, toFile int) bool {
-	rankDiff := abs(toRank - fromRank)
-	fileDiff := abs(toFile - fromFile)
-	if rankDiff != fileDiff {
-		return false
-	}
-
-	// Check path for obstacles
-	rankStep := sign(toRank - fromRank)
-	fileStep := sign(toFile - fromFile)
-	rank, file := fromRank+rankStep, fromFile+fileStep
-	for rank != toRank {
-		if b.GetPiece(rank, file) != board.Empty {
-			return false
-		}
-		rank += rankStep
-		file += fileStep
-	}
-	return true
-}
-
-func canRookMove(b *board.Board, fromRank, fromFile, toRank, toFile int) bool {
-	if fromRank != toRank && fromFile != toFile {
-		return false
-	}
-
-	// Check path for obstacles
-	if fromRank == toRank {
-		// Horizontal move
-		step := sign(toFile - fromFile)
-		for file := fromFile + step; file != toFile; file += step {
-			if b.GetPiece(fromRank, file) != board.Empty {
-				return false
-			}
-		}
-	} else {
-		// Vertical move
-		step := sign(toRank - fromRank)
-		for rank := fromRank + step; rank != toRank; rank += step {
-			if b.GetPiece(rank, fromFile) != board.Empty {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func canQueenMove(b *board.Board, fromRank, fromFile, toRank, toFile int) bool {
-	return canBishopMove(b, fromRank, fromFile, toRank, toFile) ||
-		canRookMove(b, fromRank, fromFile, toRank, toFile)
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-func sign(x int) int {
-	if x > 0 {
-		return 1
-	} else if x < 0 {
-		return -1
-	}
-	return 0
-}
-
-// Helper function to get piece values for captured pieces
-func getPieceValue(piece int) int {
-	switch piece {
-	case board.WP, board.BP:
-		return 1
-	case board.WN, board.BN, board.WB, board.BB:
-		return 3
-	case board.WR, board.BR:
-		return 5
-	case board.WQ, board.BQ:
-		return 9
-	default:
-		return 0
-	}
-}
-
-// Helper function to get piece type string
-func getPieceTypeString(piece int) string {
-	switch piece {
-	case board.WP, board.BP:
-		return "P"
-	case board.WN, board.BN:
-		return "N"
-	case board.WB, board.BB:
-		return "B"
-	case board.WR, board.BR:
-		return "R"
-	case board.WQ, board.BQ:
-		return "Q"
-	case board.WK, board.BK:
-		return "K"
-	default:
-		return ""
-	}
-}
-
-// Helper function to calculate captured pieces (simplified version for now)
+// Helper function to calculate captured pieces by comparing current board to starting position
 func getCapturedPieces(gameBoard *board.Board) ([]CapturedPiece, []CapturedPiece) {
-	// For now, return empty slices - this would need move history to properly calculate
-	// TODO: Track captured pieces during gameplay
-	return []CapturedPiece{}, []CapturedPiece{}
+	// Initial piece counts for a standard chess game
+	initialCounts := map[int]int{
+		board.WP: 8, board.WN: 2, board.WB: 2, board.WR: 2, board.WQ: 1, board.WK: 1,
+		board.BP: 8, board.BN: 2, board.BB: 2, board.BR: 2, board.BQ: 1, board.BK: 1,
+	}
+
+	// Count current pieces on the board
+	currentCounts := make(map[int]int)
+	for rank := 0; rank < 8; rank++ {
+		for file := 0; file < 8; file++ {
+			piece := gameBoard.GetPiece(rank, file)
+			if piece != board.Empty {
+				currentCounts[piece]++
+			}
+		}
+	}
+
+	var capturedWhite []CapturedPiece // Pieces captured by White (black pieces taken)
+	var capturedBlack []CapturedPiece // Pieces captured by Black (white pieces taken)
+
+	// Check what pieces are missing (captured)
+	for pieceType, initialCount := range initialCounts {
+		currentCount := currentCounts[pieceType]
+		capturedCount := initialCount - currentCount
+
+		if capturedCount > 0 {
+			pieceTypeStr := board.GetPieceType(pieceType)
+			pieceValue := board.GetPieceValue(pieceType)
+
+			// Add each captured piece individually to the appropriate list
+			for i := 0; i < capturedCount; i++ {
+				capturedPiece := CapturedPiece{
+					Type:  pieceTypeStr,
+					Value: pieceValue,
+				}
+
+				// If it's a white piece that's missing, black captured it
+				// If it's a black piece that's missing, white captured it
+				if pieceType < board.BP { // White piece captured by black
+					capturedBlack = append(capturedBlack, capturedPiece)
+				} else { // Black piece captured by white
+					capturedWhite = append(capturedWhite, capturedPiece)
+				}
+			}
+		}
+	}
+
+	return capturedWhite, capturedBlack
 }
 
 // Helper function to create complete game state with evaluation
 func createCompleteGameState(gameBoard *board.Board, message string, evaluation int) GameState {
 	capturedWhite, capturedBlack := getCapturedPieces(gameBoard)
 
+	// Ensure arrays are never nil
+	if capturedWhite == nil {
+		capturedWhite = []CapturedPiece{}
+	}
+	if capturedBlack == nil {
+		capturedBlack = []CapturedPiece{}
+	}
+
+	// Get Stockfish version
+	stockfishVersion := "Not Available"
+	if stockfishEngine != nil {
+		if version, err := stockfishEngine.GetEngineInfo(); err == nil {
+			stockfishVersion = version
+		}
+	}
+
 	state := GameState{
-		Board:         gameBoard,
-		Message:       message,
-		Evaluation:    evaluation,
-		CapturedWhite: capturedWhite,
-		CapturedBlack: capturedBlack,
+		Board:            gameBoard,
+		Message:          message,
+		Evaluation:       evaluation,
+		CapturedWhite:    capturedWhite,
+		CapturedBlack:    capturedBlack,
+		StockfishVersion: stockfishVersion,
 	}
 
 	// Update check/checkmate status

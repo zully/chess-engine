@@ -1,8 +1,8 @@
 package board
 
-// getSquareCoords converts algebraic notation (e.g., "e4") to rank and file (0-7)
+// GetSquareCoords converts algebraic notation (e.g., "e4") to rank and file (0-7)
 // The board is indexed with white at the bottom (rank 1-8) and files a-h from left to right.
-func getSquareCoords(square string) (rank int, file int) {
+func GetSquareCoords(square string) (rank int, file int) {
 	if len(square) < 1 {
 		return -1, -1
 	}
