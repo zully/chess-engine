@@ -62,6 +62,8 @@ function updateDisplay() {
     updateMoveHistory();
     updateGameMessage();
     updateButtonStates();
+    updateEvaluationBar();
+    updateCapturedPieces();
     
     // Check if we should make an automatic engine move
     checkForAutomaticEngineMove();
@@ -297,22 +299,17 @@ function constructMoveFromClick(fromSquare, toSquare) {
 function constructMove(fromSquare, toSquare) {
     if (fromSquare === toSquare) return null;
     
-    console.log(`🔍 DEBUGGING: Constructing move from ${fromSquare} to ${toSquare}`);
-    
     // Get piece data using the square names directly from board
     const fromSquareData = getSquareDataBySquare(fromSquare);
     if (!fromSquareData || !fromSquareData.Piece || fromSquareData.Piece === 0) {
-        console.log('❌ DEBUGGING: No piece found at from square');
         return null;
     }
     
     const pieceType = getPieceType(fromSquareData.Piece);
-    console.log(`🎯 DEBUGGING: Moving piece type: ${pieceType} (value: ${fromSquareData.Piece})`);
     
     // Check if it's a capture
     const toSquareData = getSquareDataBySquare(toSquare);
     const isCapture = toSquareData && toSquareData.Piece && toSquareData.Piece !== 0;
-    console.log(`⚔️ DEBUGGING: Is capture: ${isCapture}`);
     
     // Special case for castling
     if (pieceType === 'K') {
@@ -341,22 +338,15 @@ function constructMove(fromSquare, toSquare) {
             move += '=Q';
         }
     } else {
-        // 🚨 POTENTIAL BUG AREA - Other pieces 
-        console.log(`🏗️ DEBUGGING: Building notation for ${pieceType}`);
+        // Other pieces 
         move = pieceType;
-        
-        // 🚨 CHECK: Is there disambiguation logic here that shouldn't be?
-        console.log(`📝 DEBUGGING: Move so far: "${move}"`);
         
         if (isCapture) {
             move += 'x';
-            console.log(`⚔️ DEBUGGING: Added capture, move now: "${move}"`);
         }
         move += toSquare;
-        console.log(`🎯 DEBUGGING: Added target square, final move: "${move}"`);
     }
     
-    console.log(`✅ DEBUGGING: Constructed move notation: "${move}"`);
     return move;
 }
 
@@ -380,15 +370,12 @@ function highlightPossibleMoves(fromSquare) {
 function getSquareDataBySquare(squareNotation) {
     const file = squareNotation.charCodeAt(0) - 97; // a=0, b=1, etc.
     const rank = 8 - parseInt(squareNotation[1]);   // 1=7, 2=6, ..., 8=0
-    console.log(`Getting square data for ${squareNotation}: [${rank}][${file}]`); // Debug log
     
     if (rank < 0 || rank > 7 || file < 0 || file > 7) {
-        console.log(`Invalid indices for ${squareNotation}`); // Debug log
         return null;
     }
     
     const squareData = gameState.board.Squares[rank][file];
-    console.log(`Square data:`, squareData); // Debug log
     return squareData;
 }
 
@@ -415,8 +402,6 @@ function clearSelection() {
 async function executeMoveFromGUI(move) {
     if (!move) return;
     
-    console.log('Executing move:', move); // Debug log
-    
     try {
         const response = await fetch('/api/move', {
             method: 'POST',
@@ -429,13 +414,11 @@ async function executeMoveFromGUI(move) {
         gameState = await response.json();
         
         if (gameState.error) {
-            console.log('Move error:', gameState.error); // Debug log
             showMessage(gameState.error, 'error');
         } else {
             updateDisplay();
         }
     } catch (error) {
-        console.log('API error:', error); // Debug log
         showMessage('Failed to make move: ' + error.message, 'error');
     }
 }
@@ -544,12 +527,21 @@ async function requestEngineMove() {
     engineBtn.classList.add('loading');
     
     try {
+        // Get selected ELO rating from dropdown
+        const eloSelect = document.getElementById('elo-select');
+        const selectedElo = parseInt(eloSelect.value) || 0;
+        
+        const requestBody = { depth: 6 };
+        if (selectedElo > 0) {
+            requestBody.elo = selectedElo;
+        }
+        
         const response = await fetch('/api/engine', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ depth: 6 }),
+            body: JSON.stringify(requestBody),
         });
         
         gameState = await response.json();
@@ -629,6 +621,91 @@ async function resetGame() {
         resetBtn.disabled = false;
         resetBtn.classList.remove('loading');
     }
+}
+
+function updateEvaluationBar() {
+    const evaluationFill = document.getElementById('evaluation-fill');
+    const evaluationText = document.getElementById('evaluation-text');
+    
+    if (!gameState || !evaluationFill || !evaluationText) return;
+    
+    const evaluation = gameState.evaluation || 0;
+    
+    // Convert centipawns to a more readable format
+    const displayValue = (evaluation / 100).toFixed(2);
+    
+    // Calculate percentage for the bar (clamp between -1000 and +1000 centipawns)
+    const clampedEval = Math.max(-1000, Math.min(1000, evaluation));
+    const percentage = 50 + (clampedEval / 1000) * 50; // 50% center, ±50% for ±1000cp
+    
+    // Update bar
+    evaluationFill.style.width = percentage + '%';
+    
+    // Color based on evaluation
+    if (evaluation > 50) {
+        evaluationFill.style.background = 'linear-gradient(90deg, #d4edda, #28a745)';
+    } else if (evaluation < -50) {
+        evaluationFill.style.background = 'linear-gradient(90deg, #f8d7da, #dc3545)';
+    } else {
+        evaluationFill.style.background = 'linear-gradient(90deg, #f8f9fa, #f8f9fa)';
+    }
+    
+    // Update text
+    evaluationText.textContent = displayValue;
+    evaluationText.style.color = evaluation > 0 ? '#28a745' : evaluation < 0 ? '#dc3545' : '#495057';
+}
+
+function updateCapturedPieces() {
+    const capturedWhiteDiv = document.getElementById('captured-white');
+    const capturedBlackDiv = document.getElementById('captured-black');
+    const capturedWhiteValue = document.getElementById('captured-white-value');
+    const capturedBlackValue = document.getElementById('captured-black-value');
+    
+    if (!gameState || !capturedWhiteDiv || !capturedBlackDiv) return;
+    
+    const capturedWhite = gameState.capturedWhite || [];
+    const capturedBlack = gameState.capturedBlack || [];
+    
+    // Clear current display
+    capturedWhiteDiv.innerHTML = '';
+    capturedBlackDiv.innerHTML = '';
+    
+    let whiteValue = 0;
+    let blackValue = 0;
+    
+    // Display captured pieces by white
+    capturedWhite.forEach(piece => {
+        const pieceElement = document.createElement('span');
+        pieceElement.className = 'captured-piece';
+        pieceElement.textContent = getPieceSymbol(piece.type, false); // Black pieces captured by white
+        capturedWhiteDiv.appendChild(pieceElement);
+        whiteValue += piece.value;
+    });
+    
+    // Display captured pieces by black
+    capturedBlack.forEach(piece => {
+        const pieceElement = document.createElement('span');
+        pieceElement.className = 'captured-piece';
+        pieceElement.textContent = getPieceSymbol(piece.type, true); // White pieces captured by black
+        capturedBlackDiv.appendChild(pieceElement);
+        blackValue += piece.value;
+    });
+    
+    // Update values
+    if (capturedWhiteValue) capturedWhiteValue.textContent = whiteValue;
+    if (capturedBlackValue) capturedBlackValue.textContent = blackValue;
+}
+
+function getPieceSymbol(pieceType, isWhite) {
+    const symbols = {
+        'P': isWhite ? '♟' : '♟',
+        'N': isWhite ? '♞' : '♞', 
+        'B': isWhite ? '♝' : '♝',
+        'R': isWhite ? '♜' : '♜',
+        'Q': isWhite ? '♛' : '♛',
+        'K': isWhite ? '♚' : '♚'
+    };
+    return symbols[pieceType] || '';
 }
 
 function showMessage(text, type = 'info') {

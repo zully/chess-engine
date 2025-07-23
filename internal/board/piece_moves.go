@@ -169,6 +169,7 @@ func (b *Board) findKing(isWhite bool) (rank, file int) {
 
 // IsSquareAttacked returns true if the given square can be captured by any enemy piece
 func (b *Board) IsSquareAttacked(rank, file int, attackerIsWhite bool) bool {
+
 	// Check for attacking pawns
 	direction := 1
 	if attackerIsWhite {
@@ -190,16 +191,17 @@ func (b *Board) IsSquareAttacked(rank, file int, attackerIsWhite bool) bool {
 		}
 	}
 
-	// Check knight attacks
-	knightOffsets := [][2]int{{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}}
-	attackerKnight := BN
-	if attackerIsWhite {
-		attackerKnight = WN
+	// Check for knight attacks
+	knightMoves := [][2]int{
+		{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2},
+		{1, -2}, {1, 2}, {2, -1}, {2, 1},
 	}
-	for _, offset := range knightOffsets {
-		newRank, newFile := rank+offset[0], file+offset[1]
+	for _, move := range knightMoves {
+		newRank, newFile := rank+move[0], file+move[1]
 		if newRank >= 0 && newRank < 8 && newFile >= 0 && newFile < 8 {
-			if b.GetPiece(newRank, newFile) == attackerKnight {
+			piece := b.GetPiece(newRank, newFile)
+
+			if (attackerIsWhite && piece == WN) || (!attackerIsWhite && piece == BN) {
 				return true
 			}
 		}
