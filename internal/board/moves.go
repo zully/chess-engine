@@ -404,7 +404,7 @@ func (b *Board) MakeMove(notation string) error {
 			if !strings.Contains(notation, "=") {
 				notation += "=" + promotionPiece
 			}
-			fmt.Printf("Pawn promoted to %s!\n", promotionPiece)
+
 		}
 	}
 
@@ -414,14 +414,8 @@ func (b *Board) MakeMove(notation string) error {
 	// Record the position for repetition detection
 	b.RecordPosition()
 
-	// Check for draw conditions
-	if b.IsDraw() {
-		if b.IsThreefoldRepetition() {
-			fmt.Println("Draw by threefold repetition!")
-		} else {
-			fmt.Println("Draw by stalemate!")
-		}
-	}
+	// Check for draw conditions (game state will handle display)
+	b.IsDraw() // Called for any side effects, web UI handles messaging
 
 	// Check if the opponent is in check after this move
 	if b.IsInCheck(b.WhiteToMove) {
@@ -431,21 +425,13 @@ func (b *Board) MakeMove(notation string) error {
 			if !strings.Contains(notation, "#") && !strings.Contains(notation, "+") {
 				notation += "#"
 			}
-			if b.WhiteToMove {
-				fmt.Println("Checkmate! White is checkmated!")
-			} else {
-				fmt.Println("Checkmate! Black is checkmated!")
-			}
+
 		} else {
 			// Add check notation only if not already present
 			if !strings.Contains(notation, "+") && !strings.Contains(notation, "#") {
 				notation += "+"
 			}
-			if b.WhiteToMove {
-				fmt.Println("White is in check!")
-			} else {
-				fmt.Println("Black is in check!")
-			}
+
 		}
 	}
 

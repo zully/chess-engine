@@ -1,0 +1,124 @@
+# Chess Engine - Cursor Rules
+
+## Project Overview
+This is a web-based chess engine with Stockfish integration, built for Docker deployment.
+
+## Architecture
+- **cmd/**: Main application entry point (keep minimal)
+- **internal/board/**: Core chess logic and board representation
+- **internal/game/**: Game state management and types
+- **internal/web/**: HTTP handlers and web utilities  
+- **internal/uci/**: Stockfish UCI engine communication
+- **web/**: Static assets (HTML, CSS, JS, images)
+
+## Development Principles
+
+### 1. Docker-First Development
+- **ALWAYS test in Docker** - Use `./test-docker.sh` for all testing
+- Never rely on local environment for testing
+- All functionality must work in containerized environment
+- Update Dockerfile when adding new dependencies
+
+### 2. Go Standard Library First
+- Prefer Go standard library over external dependencies
+- Only add external dependencies when standard library is insufficient
+- Current approved external dependencies are minimal by design
+- Justify any new dependency additions
+
+### 3. Code Organization
+- Keep `main.go` minimal - only initialization and server setup
+- Use dependency injection pattern (see `web.Server` struct)
+- Separate concerns: board logic, game state, web handlers, engine communication
+- No CLI artifacts - this is a web-only application
+
+### 4. Error Handling
+- Return meaningful error messages
+- Handle engine failures gracefully
+- Use proper HTTP status codes
+- Log errors appropriately (not to console output)
+
+### 5. Testing & Validation
+- Run `./test-docker.sh` before any commits
+- Test both API endpoints and web interface
+- Verify engine integration works
+- Check that static assets load correctly
+
+## Code Style
+
+### Naming Conventions  
+- Use Go standard naming (PascalCase for exports, camelCase for private)
+- Board coordinates: rank/file (0-7) internally, algebraic externally
+- UCI notation for engine communication
+- Algebraic notation for move history
+
+### Function Organization
+- Keep functions focused and single-purpose
+- Board functions in appropriate files (moves.go, piece_moves.go, etc.)
+- Web handlers in handlers.go
+- Utilities separate from main logic
+
+### JSON API Design
+- Consistent response structures
+- Include error fields when appropriate
+- Use proper HTTP methods (GET for state, POST for actions)
+- Return complete game state when relevant
+
+## Specific Guidelines
+
+### Board Logic
+- Always validate moves before execution
+- Handle special moves (castling, en passant, promotion) correctly
+- Maintain position history for draw detection
+- Use internal coordinate system consistently
+
+### Engine Integration
+- Handle engine failures gracefully
+- Support different strength levels
+- Parse UCI responses properly
+- Convert between UCI and algebraic notation as needed
+
+### Web Interface
+- Serve static files efficiently
+- Maintain clean separation between API and UI
+- Support both manual moves and engine moves
+- Provide real-time game state updates
+
+## File Naming
+- Use descriptive names: `handlers.go`, `utils.go`, `piece_moves.go`
+- Group related functionality in same file
+- Keep files focused on single responsibility
+
+## Dependencies
+- **Standard Library**: Preferred for all functionality
+- **No CLI libraries**: This is web-only
+- **Minimal external deps**: Only when absolutely necessary
+- **Docker**: Required for all testing and deployment
+
+## Testing Commands
+```bash
+# Build and test in Docker (primary method)
+./test-docker.sh
+
+# Manual Docker commands (if needed)
+docker build -t chess-engine:test .
+docker run -d -p 8080:8080 --name chess-test chess-engine:test
+
+# Cleanup
+docker stop chess-test && docker rm chess-test
+```
+
+## Common Patterns
+- Use `game.CreateCompleteGameState()` for consistent response format
+- Handle engine availability checks before UCI operations
+- Validate UCI move format before processing
+- Maintain move history in algebraic notation
+- Use board.ToFEN() for engine position setup
+
+## Anti-Patterns to Avoid
+- Console output in web handlers (use comments for debug info)
+- Hardcoded file paths (use relative paths)
+- CLI-style error handling (return proper HTTP responses)
+- Direct engine access without null checks
+- Mixing UCI and algebraic notation without clear conversion
+
+Remember: **Docker testing is mandatory** - if it doesn't work in Docker, it doesn't work. 

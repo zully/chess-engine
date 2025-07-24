@@ -23,7 +23,7 @@ FROM golang:1.21 AS go-build
 
 WORKDIR /app
 COPY . .
-RUN go build -o chess-stockfish ./cmd/main.go
+RUN go build -o chess-stockfish ./cmd
 
 # ---- Stage 3: Final image - use Ubuntu 22.04 to match GLIBC versions ----
 FROM ubuntu:22.04
