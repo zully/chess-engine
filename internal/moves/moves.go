@@ -18,33 +18,32 @@ type Move struct {
 	Checkmate bool   // Whether the move gives checkmate
 }
 
-// ParseAlgebraic converts a move in algebraic notation to a Move struct
-func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
+// ParseAlgebraic parses algebraic notation and returns a Move struct
+func ParseAlgebraic(notation string, isWhiteToMove bool) (*Move, error) {
+	notation = strings.TrimSpace(notation)
+	if notation == "" {
+		return nil, fmt.Errorf("empty move notation")
+	}
+
 	move := &Move{}
 
-	// Handle castling
-	if strings.ToLower(notation) == "o-o" {
+	// Handle castling moves
+	if notation == "O-O" || notation == "0-0" {
 		move.Castle = "O-O"
-		if isWhite {
+		if isWhiteToMove {
 			move.From = "e1"
-			move.To = "g1"
 		} else {
 			move.From = "e8"
-			move.To = "g8"
 		}
-		move.Piece = "K"
 		return move, nil
 	}
-	if strings.ToLower(notation) == "o-o-o" {
+	if notation == "O-O-O" || notation == "0-0-0" {
 		move.Castle = "O-O-O"
-		if isWhite {
+		if isWhiteToMove {
 			move.From = "e1"
-			move.To = "c1"
 		} else {
 			move.From = "e8"
-			move.To = "c8"
 		}
-		move.Piece = "K"
 		return move, nil
 	}
 
@@ -104,20 +103,21 @@ func ParseAlgebraic(notation string, isWhite bool) (*Move, error) {
 			char := notation[idx]
 			// Check if it's a file letter (a-h) or rank number (1-8)
 			if (char >= 'a' && char <= 'h') || (char >= '1' && char <= '8') {
-				// Check if the next character is 'x' or if we're near the end
+				// Check if the next character is 'x' (capture with disambiguation)
 				if idx+1 < len(notation) && notation[idx+1] == 'x' {
 					// Disambiguation followed by capture (e.g., "Raxe8")
 					disambiguation = string(char)
 					idx++
 				} else if idx+2 < len(notation) {
-					// Check if this looks like disambiguation (e.g., "Rae8" where 'a' is disambiguation)
+					// Check if we have enough characters for disambiguation + target square
+					// For moves like "Rae1" (4 chars): R(0) + a(1) + e1(2,3)
 					nextChar := notation[idx+1]
-					if (nextChar >= 'a' && nextChar <= 'h') && idx+3 < len(notation) {
-						// This looks like disambiguation + target square (e.g., "Rae8")
+					if (nextChar >= 'a' && nextChar <= 'h') && idx+2 < len(notation) {
+						// This looks like disambiguation + target square (e.g., "Rae1", "Nbd2")
 						disambiguation = string(char)
 						idx++
-					} else if (nextChar >= '1' && nextChar <= '8') && idx+2 == len(notation)-1 {
-						// This looks like disambiguation + target square (e.g., "R1e8")
+					} else if (nextChar >= '1' && nextChar <= '8') && idx+2 < len(notation) {
+						// This looks like rank disambiguation + target square (e.g., "R1e1")
 						disambiguation = string(char)
 						idx++
 					}

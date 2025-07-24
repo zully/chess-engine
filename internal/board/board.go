@@ -401,3 +401,371 @@ func (b *Board) String() string {
 	}
 	return result
 }
+
+// MakeUCIMove makes a move on the board using UCI notation (e.g., "e2e4", "a1h8")
+func (b *Board) MakeUCIMove(uciMove string) error {
+	if len(uciMove) < 4 || len(uciMove) > 5 {
+		return fmt.Errorf("invalid UCI move format: %s", uciMove)
+	}
+
+	// Parse from and to squares
+	fromSquare := uciMove[0:2]
+	toSquare := uciMove[2:4]
+
+	// Parse promotion piece if present
+	var promotionPiece string
+	if len(uciMove) == 5 {
+		promotionPiece = strings.ToUpper(string(uciMove[4]))
+	}
+
+	// Get coordinates
+	fromRank, fromFile := GetSquareCoords(fromSquare)
+	toRank, toFile := GetSquareCoords(toSquare)
+
+	if fromRank < 0 || fromRank > 7 || fromFile < 0 || fromFile > 7 {
+		return fmt.Errorf("invalid from square: %s", fromSquare)
+	}
+	if toRank < 0 || toRank > 7 || toFile < 0 || toFile > 7 {
+		return fmt.Errorf("invalid to square: %s", toSquare)
+	}
+
+	// Get the squares
+	fromSquareObj := b.GetSquareByCoords(fromRank, fromFile)
+	toSquareObj := b.GetSquareByCoords(toRank, toFile)
+
+	if fromSquareObj == nil || toSquareObj == nil {
+		return fmt.Errorf("invalid square coordinates")
+	}
+
+	// Check that there's a piece to move
+	if fromSquareObj.Piece == Empty {
+		return fmt.Errorf("no piece on square %s", fromSquare)
+	}
+
+	// Check that the piece belongs to the current player
+	isWhitePiece := fromSquareObj.Piece < BP
+	if b.WhiteToMove != isWhitePiece {
+		return fmt.Errorf("not your piece to move")
+	}
+
+	// Handle castling moves specially
+	if fromSquareObj.Piece == WK || fromSquareObj.Piece == BK {
+		// Check for castling
+		if b.WhiteToMove && fromSquare == "e1" {
+			if toSquare == "g1" && b.canCastle("O-O", true) {
+				b.executeCastling("O-O", true)
+				b.WhiteToMove = false
+				b.RecordPosition()
+				b.MovesPlayed = append(b.MovesPlayed, "O-O")
+				return nil
+			}
+			if toSquare == "c1" && b.canCastle("O-O-O", true) {
+				b.executeCastling("O-O-O", true)
+				b.WhiteToMove = false
+				b.RecordPosition()
+				b.MovesPlayed = append(b.MovesPlayed, "O-O-O")
+				return nil
+			}
+		} else if !b.WhiteToMove && fromSquare == "e8" {
+			if toSquare == "g8" && b.canCastle("O-O", false) {
+				b.executeCastling("O-O", false)
+				b.WhiteToMove = true
+				b.RecordPosition()
+				b.MovesPlayed = append(b.MovesPlayed, "O-O")
+				return nil
+			}
+			if toSquare == "c8" && b.canCastle("O-O-O", false) {
+				b.executeCastling("O-O-O", false)
+				b.WhiteToMove = true
+				b.RecordPosition()
+				b.MovesPlayed = append(b.MovesPlayed, "O-O-O")
+				return nil
+			}
+		}
+	}
+
+	// Validate the move is legal for this piece type
+	piece := fromSquareObj.Piece
+	isCapture := toSquareObj.Piece != Empty
+
+	if !b.isValidMove(piece, fromRank, fromFile, toRank, toFile, isCapture) {
+		return fmt.Errorf("illegal move for piece")
+	}
+
+	// Check if moving would capture own piece
+	if toSquareObj.Piece != Empty {
+		targetIsWhite := toSquareObj.Piece < BP
+		if isWhitePiece == targetIsWhite {
+			return fmt.Errorf("cannot capture your own piece")
+		}
+	}
+
+	// If the current player is in check, verify that this move gets them out of check
+	currentPlayerIsWhite := b.WhiteToMove
+	if b.IsInCheck(currentPlayerIsWhite) {
+		// Try the move temporarily
+		originalToPiece := toSquareObj.Piece
+		toSquareObj.Piece = piece
+		fromSquareObj.Piece = Empty
+
+		stillInCheck := b.IsInCheck(currentPlayerIsWhite)
+
+		// Undo the temporary move
+		fromSquareObj.Piece = piece
+		toSquareObj.Piece = originalToPiece
+
+		if stillInCheck {
+			return fmt.Errorf("must respond to check")
+		}
+	}
+
+	// Convert UCI to algebraic BEFORE making the move (so we can still see the piece)
+	algebraicMove := b.uciToAlgebraic(uciMove)
+
+	// Store the original target piece for potential restoration
+	originalTargetPiece := toSquareObj.Piece
+
+	// Execute the move
+	b.Squares[toRank][toFile].Piece = piece
+	b.Squares[fromRank][fromFile].Piece = Empty
+
+	// Verify that this move doesn't put our own king in check
+	if b.IsInCheck(currentPlayerIsWhite) {
+		// Undo the move
+		b.Squares[fromRank][fromFile].Piece = piece
+		b.Squares[toRank][toFile].Piece = originalTargetPiece
+		return fmt.Errorf("move would put king in check")
+	}
+
+	// Handle pawn promotion
+	if (piece == WP && toRank == 0) || (piece == BP && toRank == 7) {
+		var newPiece int
+		switch promotionPiece {
+		case "Q":
+			if piece == WP {
+				newPiece = WQ
+			} else {
+				newPiece = BQ
+			}
+		case "R":
+			if piece == WP {
+				newPiece = WR
+			} else {
+				newPiece = BR
+			}
+		case "B":
+			if piece == WP {
+				newPiece = WB
+			} else {
+				newPiece = BB
+			}
+		case "N":
+			if piece == WP {
+				newPiece = WN
+			} else {
+				newPiece = BN
+			}
+		default:
+			// Default to Queen if no promotion piece specified
+			if piece == WP {
+				newPiece = WQ
+			} else {
+				newPiece = BQ
+			}
+		}
+		b.Squares[toRank][toFile].Piece = newPiece
+	}
+
+	// Handle en passant capture
+	if (piece == WP || piece == BP) && isCapture && b.EnPassant == toSquare {
+		// Remove the captured pawn
+		capturedPawnRank := toRank
+		if piece == WP {
+			capturedPawnRank = toRank + 1
+		} else {
+			capturedPawnRank = toRank - 1
+		}
+		b.Squares[capturedPawnRank][toFile].Piece = Empty
+	}
+
+	// Handle en passant target setting
+	if (piece == WP || piece == BP) && abs(toRank-fromRank) == 2 {
+		targetRank := (fromRank + toRank) / 2
+		b.EnPassant = GetSquareName(targetRank, toFile)
+	} else {
+		b.EnPassant = ""
+	}
+
+	// Update castling rights
+	b.updateCastlingRights(fromSquare, piece)
+
+	// Switch turns
+	b.WhiteToMove = !b.WhiteToMove
+
+	// Record position for repetition detection
+	b.RecordPosition()
+
+	// Add to move history
+	b.MovesPlayed = append(b.MovesPlayed, algebraicMove)
+
+	return nil
+}
+
+// isValidMove validates if a piece can legally move from one square to another
+func (b *Board) isValidMove(piece int, fromRank, fromFile, toRank, toFile int, isCapture bool) bool {
+	switch piece {
+	case WP, BP:
+		return canPawnMove(b, fromRank, fromFile, toRank, toFile, isCapture)
+	case WN, BN:
+		return CanKnightMove(fromRank, fromFile, toRank, toFile)
+	case WB, BB:
+		return CanBishopMove(b, fromRank, fromFile, toRank, toFile)
+	case WR, BR:
+		return CanRookMove(b, fromRank, fromFile, toRank, toFile)
+	case WQ, BQ:
+		return CanQueenMove(b, fromRank, fromFile, toRank, toFile)
+	case WK, BK:
+		return canKingMove(fromRank, fromFile, toRank, toFile)
+	default:
+		return false
+	}
+}
+
+// uciToAlgebraic converts UCI move to algebraic notation for move history display
+func (b *Board) uciToAlgebraic(uciMove string) string {
+	// For now, return a simplified algebraic notation
+	// This can be enhanced later for full algebraic notation with disambiguation
+
+	if len(uciMove) < 4 {
+		return uciMove
+	}
+
+	fromSquare := uciMove[0:2]
+	toSquare := uciMove[2:4]
+
+	// Handle castling
+	if uciMove == "e1g1" || uciMove == "e8g8" {
+		return "O-O"
+	}
+	if uciMove == "e1c1" || uciMove == "e8c8" {
+		return "O-O-O"
+	}
+
+	// Get piece type from the from square
+	fromRank, fromFile := GetSquareCoords(fromSquare)
+	if fromRank < 0 || fromFile < 0 || fromRank > 7 || fromFile > 7 {
+		return uciMove
+	}
+
+	piece := b.GetPiece(fromRank, fromFile)
+	if piece == Empty {
+		return uciMove
+	}
+
+	pieceType := GetPieceType(piece)
+
+	// For pawns, just return the target square (or capture notation)
+	if pieceType == "P" {
+		toRank, toFileCoord := GetSquareCoords(toSquare)
+		if toRank < 0 || toRank > 7 {
+			return uciMove
+		}
+
+		// Check if it's a capture (diagonal move for pawn)
+		if fromFile != toFileCoord {
+			// Pawn capture
+			result := fromSquare[0:1] + "x" + toSquare
+			// Add promotion if present
+			if len(uciMove) == 5 {
+				result += "=" + strings.ToUpper(string(uciMove[4]))
+			}
+			return result
+		} else {
+			// Regular pawn move
+			result := toSquare
+			// Add promotion if present
+			if len(uciMove) == 5 {
+				result += "=" + strings.ToUpper(string(uciMove[4]))
+			}
+			return result
+		}
+	}
+
+	// For other pieces, check if it's a capture and add disambiguation if needed
+	toRank, toFile := GetSquareCoords(toSquare)
+	if toRank < 0 || toFile < 0 || toRank > 7 || toFile > 7 {
+		return uciMove
+	}
+
+	targetPiece := b.GetPiece(toRank, toFile)
+	isCapture := targetPiece != Empty
+
+	// Check if disambiguation is needed (other pieces of same type can move to same square)
+	disambiguation := b.getDisambiguation(piece, fromRank, fromFile, toRank, toFile)
+
+	var result string
+	if isCapture {
+		result = pieceType + disambiguation + "x" + toSquare
+	} else {
+		result = pieceType + disambiguation + toSquare
+	}
+	return result
+}
+
+// getDisambiguation returns the disambiguation string needed when multiple pieces can move to same square
+func (b *Board) getDisambiguation(piece int, fromRank, fromFile, toRank, toFile int) string {
+	// Find all pieces of the same type that could move to the same target square
+	sameTypePieces := []struct{ rank, file int }{}
+
+	for rank := 0; rank < 8; rank++ {
+		for file := 0; file < 8; file++ {
+			if rank == fromRank && file == fromFile {
+				continue // Skip the piece we're moving
+			}
+
+			boardPiece := b.GetPiece(rank, file)
+			if boardPiece == piece {
+				// Check if this piece could legally move to the target square
+				targetPiece := b.GetPiece(toRank, toFile)
+				isCapture := targetPiece != Empty
+				if b.isValidMove(boardPiece, rank, file, toRank, toFile, isCapture) {
+					sameTypePieces = append(sameTypePieces, struct{ rank, file int }{rank, file})
+				}
+			}
+		}
+	}
+
+	// If no other pieces can move there, no disambiguation needed
+	if len(sameTypePieces) == 0 {
+		return ""
+	}
+
+	// Check if file disambiguation is sufficient
+	fileUnique := true
+	for _, p := range sameTypePieces {
+		if p.file == fromFile {
+			fileUnique = false
+			break
+		}
+	}
+
+	if fileUnique {
+		return string(rune('a' + fromFile))
+	}
+
+	// Check if rank disambiguation is sufficient
+	rankUnique := true
+	for _, p := range sameTypePieces {
+		if p.rank == fromRank {
+			rankUnique = false
+			break
+		}
+	}
+
+	if rankUnique {
+		return string(rune('1' + (7 - fromRank)))
+	}
+
+	// If neither file nor rank alone is sufficient, use both
+	return string(rune('a'+fromFile)) + string(rune('1'+(7-fromRank)))
+}

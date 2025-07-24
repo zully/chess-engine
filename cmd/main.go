@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/zully/chess-engine/internal/board"
 	"github.com/zully/chess-engine/internal/uci"
@@ -26,15 +28,13 @@ type GameState struct {
 	CapturedWhite    []CapturedPiece `json:"capturedWhite"`    // Pieces captured by White
 	CapturedBlack    []CapturedPiece `json:"capturedBlack"`    // Pieces captured by Black
 	StockfishVersion string          `json:"stockfishVersion"` // Stockfish engine version
+	LastUCIMove      string          `json:"lastUCIMove"`      // Last UCI move played (e.g., "e2e4")
 }
 
+// CapturedPiece represents a captured piece with its value
 type CapturedPiece struct {
-	Type  string `json:"type"`  // Piece type (P, N, B, R, Q)
-	Value int    `json:"value"` // Point value
-}
-
-type MoveRequest struct {
-	Move string `json:"move"`
+	Type  string `json:"type"`
+	Value int    `json:"value"`
 }
 
 type EngineRequest struct {
@@ -49,8 +49,16 @@ func main() {
 	// Initialize the game board
 	gameBoard = board.NewBoard()
 
-	// Initialize Stockfish engine
-	stockfishPath := filepath.Join("stockfish", "stockfish-macos-m1-apple-silicon")
+	// Initialize Stockfish engine - use different paths for Docker vs local
+	var stockfishPath string
+	if _, err := os.Stat("/usr/local/bin/stockfish"); err == nil {
+		// Docker environment - Stockfish is at /usr/local/bin/stockfish
+		stockfishPath = "/usr/local/bin/stockfish"
+	} else {
+		// Local development - use the local Mac binary
+		stockfishPath = filepath.Join("stockfish", "stockfish-macos-m1-apple-silicon")
+	}
+
 	var err error
 	stockfishEngine, err = uci.NewEngine(stockfishPath)
 	if err != nil {
@@ -120,17 +128,37 @@ func makeMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req MoveRequest
+	var req struct {
+		Move string `json:"move"` // Now expects UCI format (e.g., "e2e4", "a1e1")
+	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		state := GameState{Board: gameBoard, Error: "Invalid request format"}
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate UCI move format
+	uciMove := strings.TrimSpace(req.Move)
+	if !isValidUCIMove(uciMove) {
+		state := createCompleteGameState(gameBoard, "", 0)
+		state.Error = fmt.Sprintf("Invalid UCI move format: %s", uciMove)
 		json.NewEncoder(w).Encode(state)
 		return
 	}
 
-	err := gameBoard.MakeMove(req.Move)
+	// Make the move on the board
+	if err := gameBoard.MakeUCIMove(uciMove); err != nil {
+		// Get current position evaluation from Stockfish if available
+		evaluation := 0
+		if stockfishEngine != nil {
+			currentFEN := gameBoard.ToFEN()
+			if eval, err := stockfishEngine.GetEvaluation(currentFEN); err == nil {
+				evaluation = eval
+			}
+		}
 
-	if err != nil {
-		state := GameState{Board: gameBoard, Error: err.Error()}
+		state := createCompleteGameState(gameBoard, "", evaluation)
+		state.Error = fmt.Sprintf("Invalid move: %s", err.Error())
 		json.NewEncoder(w).Encode(state)
 		return
 	}
@@ -141,17 +169,51 @@ func makeMove(w http.ResponseWriter, r *http.Request) {
 		currentFEN := gameBoard.ToFEN()
 		if eval, err := stockfishEngine.GetEvaluation(currentFEN); err == nil {
 			evaluation = eval
-		} else {
-			fmt.Printf("Warning: Failed to get evaluation: %v\n", err)
 		}
 	}
 
-	// Create message based on game state
-	baseMessage := fmt.Sprintf("Played %s", req.Move)
+	// Determine the message
+	message := "Move made"
+	if gameBoard.WhiteToMove {
+		message = "White to move"
+	} else {
+		message = "Black to move"
+	}
 
-	// Create complete game state with evaluation
-	state := createCompleteGameState(gameBoard, baseMessage, evaluation)
+	// Create and return the complete game state
+	state := createCompleteGameState(gameBoard, message, evaluation)
+	state.LastUCIMove = uciMove // Add the last UCI move to the response
 	json.NewEncoder(w).Encode(state)
+}
+
+// isValidUCIMove validates basic UCI move format
+func isValidUCIMove(move string) bool {
+	// Basic UCI format: 4 or 5 characters
+	// 4 chars: e2e4, a1h8, etc.
+	// 5 chars: e7e8q (pawn promotion)
+	if len(move) < 4 || len(move) > 5 {
+		return false
+	}
+
+	// Check from square (first 2 chars)
+	if move[0] < 'a' || move[0] > 'h' || move[1] < '1' || move[1] > '8' {
+		return false
+	}
+
+	// Check to square (chars 2-3)
+	if move[2] < 'a' || move[2] > 'h' || move[3] < '1' || move[3] > '8' {
+		return false
+	}
+
+	// Check promotion piece if present (char 4)
+	if len(move) == 5 {
+		promotion := move[4]
+		if promotion != 'q' && promotion != 'r' && promotion != 'b' && promotion != 'n' {
+			return false
+		}
+	}
+
+	return true
 }
 
 func engineMove(w http.ResponseWriter, r *http.Request) {
@@ -230,112 +292,20 @@ func engineMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert UCI move to algebraic notation and execute it
-	// First, we need to determine what piece is moving by examining the board
-	fromRank, fromFile := board.GetSquareCoords(bestMove.From)
-	if fromRank < 0 || fromFile < 0 {
-		state.Error = fmt.Sprintf("Invalid UCI move from square: %s", bestMove.From)
-		json.NewEncoder(w).Encode(state)
-		return
-	}
-
-	toRank, toFile := board.GetSquareCoords(bestMove.To)
-	if toRank < 0 || toFile < 0 {
-		state.Error = fmt.Sprintf("Invalid UCI move to square: %s", bestMove.To)
-		json.NewEncoder(w).Encode(state)
-		return
-	}
-
-	// Get the piece that's moving
-	piece := gameBoard.GetPiece(fromRank, fromFile)
-	if piece == board.Empty {
-		state.Error = fmt.Sprintf("No piece at source square %s", bestMove.From)
-		json.NewEncoder(w).Encode(state)
-		return
-	}
-
-	// Check if it's a capture
-	targetPiece := gameBoard.GetPiece(toRank, toFile)
-	isCapture := targetPiece != board.Empty
-
-	// Convert UCI to algebraic notation based on piece type
-	var moveNotation string
-	switch piece {
-	case board.WP, board.BP:
-		// Pawn moves
-		if isCapture {
-			moveNotation = bestMove.From[:1] + "x" + bestMove.To
-		} else {
-			moveNotation = bestMove.To
-		}
-	case board.WN, board.BN:
-		// Knight moves - check for disambiguation
-		moveNotation = "N"
-		if needsDisambiguation(gameBoard, piece, fromRank, fromFile, toRank, toFile) {
-			moveNotation += bestMove.From[:1] // Add file for disambiguation
-		}
-		if isCapture {
-			moveNotation += "x"
-		}
-		moveNotation += bestMove.To
-	case board.WB, board.BB:
-		// Bishop moves - check for disambiguation
-		moveNotation = "B"
-		if needsDisambiguation(gameBoard, piece, fromRank, fromFile, toRank, toFile) {
-			moveNotation += bestMove.From[:1] // Add file for disambiguation
-		}
-		if isCapture {
-			moveNotation += "x"
-		}
-		moveNotation += bestMove.To
-	case board.WR, board.BR:
-		// Rook moves - check for disambiguation
-		moveNotation = "R"
-		if needsDisambiguation(gameBoard, piece, fromRank, fromFile, toRank, toFile) {
-			moveNotation += bestMove.From[:1] // Add file for disambiguation
-		}
-		if isCapture {
-			moveNotation += "x"
-		}
-		moveNotation += bestMove.To
-	case board.WQ, board.BQ:
-		// Queen moves - check for disambiguation
-		moveNotation = "Q"
-		if needsDisambiguation(gameBoard, piece, fromRank, fromFile, toRank, toFile) {
-			moveNotation += bestMove.From[:1] // Add file for disambiguation
-		}
-		if isCapture {
-			moveNotation += "x"
-		}
-		moveNotation += bestMove.To
-	case board.WK, board.BK:
-		// Check for castling
-		if bestMove.From == "e1" && (bestMove.To == "g1" || bestMove.To == "c1") ||
-			bestMove.From == "e8" && (bestMove.To == "g8" || bestMove.To == "c8") {
-			if bestMove.To[0] == 'g' {
-				moveNotation = "O-O"
-			} else {
-				moveNotation = "O-O-O"
-			}
-		} else {
-			moveNotation = "K"
-			if isCapture {
-				moveNotation += "x"
-			}
-			moveNotation += bestMove.To
-		}
-	default:
-		state.Error = fmt.Sprintf("Unknown piece type: %d", piece)
-		json.NewEncoder(w).Encode(state)
-		return
-	}
-
-	// Execute the move
-	err = gameBoard.MakeMove(moveNotation)
+	// Execute the move using UCI notation directly
+	err = gameBoard.MakeUCIMove(bestMove.UCI)
 	if err != nil {
-		state.Error = fmt.Sprintf("Failed to execute engine move %s (%s): %v", bestMove.UCI, moveNotation, err)
+		state.Error = fmt.Sprintf("Failed to execute engine move %s: %v", bestMove.UCI, err)
 		json.NewEncoder(w).Encode(state)
 		return
+	}
+
+	// Get the algebraic notation from the move history (last move added)
+	var moveNotation string
+	if len(gameBoard.MovesPlayed) > 0 {
+		moveNotation = gameBoard.MovesPlayed[len(gameBoard.MovesPlayed)-1]
+	} else {
+		moveNotation = bestMove.UCI // Fallback to UCI if no algebraic notation available
 	}
 
 	// Update game state
@@ -379,6 +349,10 @@ func engineMove(w http.ResponseWriter, r *http.Request) {
 
 	// Create complete game state with evaluation
 	state = createCompleteGameState(gameBoard, baseMessage, bestMove.Evaluation)
+
+	// Add the UCI move for last move highlighting
+	state.LastUCIMove = bestMove.UCI
+
 	json.NewEncoder(w).Encode(state)
 }
 
@@ -488,53 +462,10 @@ func resetGame(w http.ResponseWriter, r *http.Request) {
 
 	// Create complete game state with evaluation
 	state := createCompleteGameState(gameBoard, "Game reset. White to move.", evaluation)
+	state.LastUCIMove = "" // Clear last move on reset
 	json.NewEncoder(w).Encode(state)
 }
 
-// needsDisambiguation checks if there are other pieces of the same type that could move to the same destination
-func needsDisambiguation(b *board.Board, pieceType int, fromRank, fromFile, toRank, toFile int) bool {
-	// Check for pieces of the same type that could also move to the destination
-	for rank := 0; rank < 8; rank++ {
-		for file := 0; file < 8; file++ {
-			if rank == fromRank && file == fromFile {
-				continue // Skip the piece we're moving
-			}
-
-			if b.GetPiece(rank, file) != pieceType {
-				continue // Not the same piece type
-			}
-
-			// Check if this piece could also move to the same destination
-			canMove := false
-			switch pieceType {
-			case board.WN, board.BN:
-				canMove = board.CanKnightMove(rank, file, toRank, toFile)
-			case board.WB, board.BB:
-				canMove = board.CanBishopMove(b, rank, file, toRank, toFile)
-			case board.WR, board.BR:
-				canMove = board.CanRookMove(b, rank, file, toRank, toFile)
-			case board.WQ, board.BQ:
-				canMove = board.CanQueenMove(b, rank, file, toRank, toFile)
-			}
-
-			if canMove {
-				// Check if the destination square is valid (not capturing own piece)
-				targetPiece := b.GetPiece(toRank, toFile)
-				if targetPiece != board.Empty {
-					// Different color piece - can capture
-					if (targetPiece >= board.BP) != (pieceType >= board.BP) {
-						return true // Disambiguation needed
-					}
-				} else {
-					return true // Empty square, disambiguation needed
-				}
-			}
-		}
-	}
-	return false
-}
-
-// Helper function to calculate captured pieces by comparing current board to starting position
 func getCapturedPieces(gameBoard *board.Board) ([]CapturedPiece, []CapturedPiece) {
 	// Initial piece counts for a standard chess game
 	initialCounts := map[int]int{
@@ -639,6 +570,29 @@ func createCompleteGameState(gameBoard *board.Board, message string, evaluation 
 			if count > state.PositionCount {
 				state.PositionCount = count
 			}
+		}
+	}
+
+	// Enhance message with check/checkmate announcements
+	if state.IsCheckmate {
+		if gameBoard.WhiteToMove {
+			state.Message = "Checkmate! Black wins!"
+		} else {
+			state.Message = "Checkmate! White wins!"
+		}
+	} else if state.InCheck {
+		if gameBoard.WhiteToMove {
+			state.Message = "White is in check!"
+		} else {
+			state.Message = "Black is in check!"
+		}
+	} else if state.Draw {
+		state.Message = fmt.Sprintf("Draw! %s", drawReason)
+	} else if message == "" {
+		if gameBoard.WhiteToMove {
+			state.Message = "White to move"
+		} else {
+			state.Message = "Black to move"
 		}
 	}
 

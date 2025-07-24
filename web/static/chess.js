@@ -25,6 +25,7 @@ let gameState = null;
 let boardFlipped = false; // false = white perspective, true = black perspective
 let selectedSquare = null; // Currently selected square for moves
 let draggedPiece = null; // Currently being dragged piece
+let lastMoveSquares = null; // Track last move squares for highlighting
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -138,8 +139,13 @@ function resetGame() {
         gameState = data;
         updateGameState(data);
         clearSelection();
-        isFlipped = false;
-        updateBoard(data.board);
+        boardFlipped = false; // Reset board orientation to white perspective
+        
+        // Update flip button text
+        const flipBtn = document.getElementById('flip-btn');
+        flipBtn.textContent = 'View as Black';
+        
+        updateDisplay(); // Re-render with correct orientation
     })
     .catch(error => {
         console.error('Error resetting game:', error);
@@ -159,8 +165,37 @@ function updateDisplay() {
     updateEvaluationBar();
     updateCapturedPieces();
     
+    // Highlight the last move if available
+    highlightLastMoveFromGameState();
+    
     // Check if we should make an automatic engine move
     checkForAutomaticEngineMove();
+}
+
+function highlightLastMoveFromGameState() {
+    // Clear previous highlighting
+    clearLastMoveHighlighting();
+    
+    // Check if there's a last UCI move in the game state
+    if (!gameState || !gameState.lastUCIMove || gameState.lastUCIMove.length < 4) {
+        return;
+    }
+    
+    // Extract from and to squares from the UCI move (e.g., "e2e4" -> "e2", "e4")
+    const fromSquare = gameState.lastUCIMove.substring(0, 2);
+    const toSquare = gameState.lastUCIMove.substring(2, 4);
+    
+    // Store the last move squares
+    lastMoveSquares = { from: fromSquare, to: toSquare };
+    
+    // Find and highlight the squares
+    const squares = document.querySelectorAll('.square');
+    squares.forEach(square => {
+        const squareNotation = square.dataset.square;
+        if (squareNotation === fromSquare || squareNotation === toSquare) {
+            square.classList.add('last-move');
+        }
+    });
 }
 
 function renderCoordinates() {
@@ -202,27 +237,34 @@ function renderBoard() {
     
     const squares = gameState.board.Squares || [];
     
-    for (let rank = 0; rank < 8; rank++) {
-        for (let file = 0; file < 8; file++) {
+    // Iterate through squares in display order (top-left to bottom-right of visual board)
+    for (let displayRow = 0; displayRow < 8; displayRow++) {
+        for (let displayCol = 0; displayCol < 8; displayCol++) {
             const square = document.createElement('div');
-            const isLight = (rank + file) % 2 === 0;
             
-            // Adjust for perspective - determine display position
-            let displayRank = rank;
-            let displayFile = file;
+            // Calculate logical position based on flip state
+            let logicalRank, logicalFile;
             
             if (boardFlipped) {
-                displayRank = 7 - rank;
-                displayFile = 7 - file;
+                // Black perspective: display row 0 = logical rank 7, display col 0 = logical file 7
+                logicalRank = 7 - displayRow;
+                logicalFile = 7 - displayCol;
+            } else {
+                // White perspective: display row 0 = logical rank 0, display col 0 = logical file 0
+                logicalRank = displayRow;
+                logicalFile = displayCol;
             }
             
-            square.className = `square ${isLight ? 'light' : 'dark'}`;
-            square.dataset.rank = displayRank;
-            square.dataset.file = displayFile;
-            square.dataset.square = String.fromCharCode(97 + displayFile) + (8 - displayRank);
+            // Square color calculation based on display position
+            const isLight = (displayRow + displayCol) % 2 === 0;
             
-            // Add piece if present
-            const squareData = squares[rank] && squares[rank][file];
+            square.className = `square ${isLight ? 'light' : 'dark'}`;
+            square.dataset.rank = logicalRank;
+            square.dataset.file = logicalFile;
+            square.dataset.square = String.fromCharCode(97 + logicalFile) + (8 - logicalRank);
+            
+            // Get piece data from the logical position
+            const squareData = squares[logicalRank] && squares[logicalRank][logicalFile];
             if (squareData && squareData.Piece && squareData.Piece !== 0) {
                 const piece = document.createElement('img');
                 piece.className = 'piece';
@@ -267,13 +309,22 @@ function highlightKingInCheck() {
             const squareData = getSquareDataBySquare(square.dataset.square);
             if (squareData) {
                 const isKing = (squareData.Piece === 6 || squareData.Piece === 12); // White or Black King
-                const isCurrentPlayerKing = (gameState.board.WhiteToMove && squareData.Piece === 6) || 
-                                          (!gameState.board.WhiteToMove && squareData.Piece === 12);
                 
-                if (isKing && isCurrentPlayerKing) {
-                    piece.classList.add('check');
-                } else {
-                    piece.classList.remove('check');
+                if (isKing) {
+                    // Determine whose king is in check based on whose turn it is
+                    // If it's White's turn and inCheck=true, then White king is in check
+                    // If it's Black's turn and inCheck=true, then Black king is in check
+                    const isWhiteKing = squareData.Piece === 6;
+                    const isBlackKing = squareData.Piece === 12;
+                    
+                    const whiteInCheck = gameState.inCheck && gameState.board.WhiteToMove;
+                    const blackInCheck = gameState.inCheck && !gameState.board.WhiteToMove;
+                    
+                    if ((isWhiteKing && whiteInCheck) || (isBlackKing && blackInCheck)) {
+                        piece.classList.add('check');
+                    } else {
+                        piece.classList.remove('check');
+                    }
                 }
             }
         }
@@ -354,7 +405,7 @@ function handleDrop(e) {
     }
     
     // Construct proper algebraic move
-    const move = constructAlgebraicMove(fromSquare, toSquare);
+    const move = constructUCIMove(fromSquare, toSquare);
     if (move) {
         makeMove(move);
     }
@@ -394,7 +445,7 @@ function handleSquareClick(event) {
         
         if (fromSquare !== toSquare) {
             // Try to make the move using algebraic notation
-            const move = constructAlgebraicMove(fromSquare, toSquare);
+            const move = constructUCIMove(fromSquare, toSquare);
             if (move) {
                 makeMove(move);
             }
@@ -402,7 +453,7 @@ function handleSquareClick(event) {
     }
 }
 
-function constructAlgebraicMove(fromSquare, toSquare) {
+function constructUCIMove(fromSquare, toSquare) {
     // Get piece information from the from square
     const fromSquareData = getSquareDataBySquare(fromSquare);
     if (!fromSquareData || fromSquareData.Piece === 0) {
@@ -410,167 +461,32 @@ function constructAlgebraicMove(fromSquare, toSquare) {
     }
     
     const pieceType = getPieceType(fromSquareData.Piece);
-    const isWhitePiece = fromSquareData.Piece < 7;
     
-    // Special case for castling
+    // Special case for castling - convert to UCI format
     if (pieceType === 'K') {
-        if (fromSquare === 'e1' && toSquare === 'g1') return 'O-O';
-        if (fromSquare === 'e1' && toSquare === 'c1') return 'O-O-O';
-        if (fromSquare === 'e8' && toSquare === 'g8') return 'O-O';
-        if (fromSquare === 'e8' && toSquare === 'c8') return 'O-O-O';
+        if (fromSquare === 'e1' && toSquare === 'g1') return 'e1g1'; // White kingside
+        if (fromSquare === 'e1' && toSquare === 'c1') return 'e1c1'; // White queenside
+        if (fromSquare === 'e8' && toSquare === 'g8') return 'e8g8'; // Black kingside
+        if (fromSquare === 'e8' && toSquare === 'c8') return 'e8c8'; // Black queenside
     }
     
-    // For pawns, just return the target square (e.g., "e4")
+    // For all other moves, just combine from and to squares
+    // UCI format: fromSquare + toSquare (e.g., "a1e1", "e2e4", "g1f3")
+    let uciMove = fromSquare + toSquare;
+    
+    // Handle pawn promotion - check if pawn reaches promotion rank
     if (pieceType === 'P') {
-        // Check if it's a capture
-        const toSquareData = getSquareDataBySquare(toSquare);
-        if (toSquareData && toSquareData.Piece !== 0) {
-            // Pawn capture: include from file (e.g., "exd5")
-            return fromSquare[0] + 'x' + toSquare;
-        } else {
-            // Check for en passant capture
-            // (simplified - the backend will handle the complexity)
-            return toSquare;
-        }
-    } else {
-        // For other pieces, check if disambiguation is needed
-        const toSquareData = getSquareDataBySquare(toSquare);
-        const isCapture = toSquareData && toSquareData.Piece !== 0;
+        const toRank = parseInt(toSquare[1]);
+        const isWhitePiece = fromSquareData.Piece < 7;
+        const promotionRank = isWhitePiece ? 8 : 1;
         
-        // Check if there are other pieces of the same type that could also move to this square
-        const disambiguation = getDisambiguation(fromSquare, toSquare, pieceType, isWhitePiece);
-        
-        let move = pieceType;
-        if (disambiguation) {
-            move += disambiguation;
-        }
-        if (isCapture) {
-            move += 'x';
-        }
-        move += toSquare;
-        
-        return move;
-    }
-}
-
-// Helper function to determine if disambiguation is needed and what form it should take
-function getDisambiguation(fromSquare, toSquare, pieceType, isWhitePiece) {
-    if (!gameState || !gameState.board) return '';
-    
-    const fromFile = fromSquare[0];
-    const fromRank = fromSquare[1];
-    const squares = gameState.board.Squares;
-    
-    // Find all other pieces of the same type and color that could move to the target square
-    const conflictingPieces = [];
-    
-    for (let rank = 0; rank < 8; rank++) {
-        for (let file = 0; file < 8; file++) {
-            const square = squares[rank][file];
-            if (!square || square.Piece === 0) continue;
-            
-            const squarePieceType = getPieceType(square.Piece);
-            const squareIsWhite = square.Piece < 7;
-            
-            // Skip if not the same piece type and color
-            if (squarePieceType !== pieceType || squareIsWhite !== isWhitePiece) continue;
-            
-            const squareName = square.Name;
-            // Skip the piece we're actually moving
-            if (squareName === fromSquare) continue;
-            
-            // Check if this piece could also move to the target square
-            if (canPieceMoveTo(squareName, toSquare, pieceType)) {
-                conflictingPieces.push(squareName);
-            }
+        if (toRank === promotionRank) {
+            // For now, always promote to queen (can be enhanced later)
+            uciMove += 'q';
         }
     }
     
-    // If no conflicting pieces, no disambiguation needed
-    if (conflictingPieces.length === 0) {
-        return '';
-    }
-    
-    // Check if file disambiguation is sufficient
-    const sameFile = conflictingPieces.some(square => square[0] === fromFile);
-    if (!sameFile) {
-        return fromFile; // Use file letter (e.g., "Ra" in "Rae8")
-    }
-    
-    // Check if rank disambiguation is sufficient
-    const sameRank = conflictingPieces.some(square => square[1] === fromRank);
-    if (!sameRank) {
-        return fromRank; // Use rank number (e.g., "R1" in "R1e8")
-    }
-    
-    // If both file and rank have conflicts, use both (rare case)
-    return fromSquare; // Use full square (e.g., "Ra1" in "Ra1e8")
-}
-
-// Helper function to check if a piece at a given square can move to a target square
-function canPieceMoveTo(fromSquare, toSquare, pieceType) {
-    const fromSquareData = getSquareDataBySquare(fromSquare);
-    if (!fromSquareData || fromSquareData.Piece === 0) return false;
-    
-    const fromFile = fromSquare.charCodeAt(0) - 97; // a=0, b=1, etc.
-    const fromRank = 8 - parseInt(fromSquare[1]);   // 1=7, 2=6, ..., 8=0
-    const toFile = toSquare.charCodeAt(0) - 97;
-    const toRank = 8 - parseInt(toSquare[1]);
-    
-    // Basic movement validation (simplified)
-    switch (pieceType) {
-        case 'N': // Knight
-            const rankDiff = Math.abs(toRank - fromRank);
-            const fileDiff = Math.abs(toFile - fromFile);
-            return (rankDiff === 2 && fileDiff === 1) || (rankDiff === 1 && fileDiff === 2);
-            
-        case 'B': // Bishop
-            const bishopRankDiff = Math.abs(toRank - fromRank);
-            const bishopFileDiff = Math.abs(toFile - fromFile);
-            if (bishopRankDiff !== bishopFileDiff) return false;
-            return isPathClear(fromRank, fromFile, toRank, toFile);
-            
-        case 'R': // Rook
-            if (fromRank !== toRank && fromFile !== toFile) return false;
-            return isPathClear(fromRank, fromFile, toRank, toFile);
-            
-        case 'Q': // Queen
-            const queenRankDiff = Math.abs(toRank - fromRank);
-            const queenFileDiff = Math.abs(toFile - fromFile);
-            const isDiagonal = queenRankDiff === queenFileDiff;
-            const isStraight = fromRank === toRank || fromFile === toFile;
-            if (!isDiagonal && !isStraight) return false;
-            return isPathClear(fromRank, fromFile, toRank, toFile);
-            
-        case 'K': // King
-            const kingRankDiff = Math.abs(toRank - fromRank);
-            const kingFileDiff = Math.abs(toFile - fromFile);
-            return kingRankDiff <= 1 && kingFileDiff <= 1;
-            
-        default:
-            return false;
-    }
-}
-
-// Helper function to check if the path between two squares is clear
-function isPathClear(fromRank, fromFile, toRank, toFile) {
-    if (!gameState || !gameState.board) return false;
-    
-    const rankStep = toRank === fromRank ? 0 : (toRank > fromRank ? 1 : -1);
-    const fileStep = toFile === fromFile ? 0 : (toFile > fromFile ? 1 : -1);
-    
-    let currentRank = fromRank + rankStep;
-    let currentFile = fromFile + fileStep;
-    
-    while (currentRank !== toRank || currentFile !== toFile) {
-        if (gameState.board.Squares[currentRank][currentFile].Piece !== 0) {
-            return false; // Path blocked
-        }
-        currentRank += rankStep;
-        currentFile += fileStep;
-    }
-    
-    return true;
+    return uciMove;
 }
 
 function canMovePiece(square) {
@@ -580,68 +496,6 @@ function canMovePiece(square) {
     const isWhitePiece = squareData.Piece <= 6;
     return (gameState.board.WhiteToMove && isWhitePiece) || 
            (!gameState.board.WhiteToMove && !isWhitePiece);
-}
-
-function constructMoveFromDrag(fromSquare, toSquare) {
-    return constructMove(fromSquare, toSquare);
-}
-
-function constructMoveFromClick(fromSquare, toSquare) {
-    return constructMove(fromSquare, toSquare);
-}
-
-function constructMove(fromSquare, toSquare) {
-    if (fromSquare === toSquare) return null;
-    
-    // Get piece data using the square names directly from board
-    const fromSquareData = getSquareDataBySquare(fromSquare);
-    if (!fromSquareData || !fromSquareData.Piece || fromSquareData.Piece === 0) {
-        return null;
-    }
-    
-    const pieceType = getPieceType(fromSquareData.Piece);
-    
-    // Check if it's a capture
-    const toSquareData = getSquareDataBySquare(toSquare);
-    const isCapture = toSquareData && toSquareData.Piece && toSquareData.Piece !== 0;
-    
-    // Special case for castling
-    if (pieceType === 'K') {
-        if (fromSquare === 'e1' && toSquare === 'g1') return 'O-O';
-        if (fromSquare === 'e1' && toSquare === 'c1') return 'O-O-O';
-        if (fromSquare === 'e8' && toSquare === 'g8') return 'O-O';
-        if (fromSquare === 'e8' && toSquare === 'c8') return 'O-O-O';
-    }
-    
-    // Construct move notation
-    let move = '';
-    
-    if (pieceType === 'P') {
-        // Pawn moves
-        if (isCapture) {
-            move = fromSquare[0] + 'x' + toSquare;
-        } else {
-            move = toSquare;
-        }
-        
-        // Check for pawn promotion (simplified - assumes Queen promotion)
-        const toRank = parseInt(toSquare[1]);
-        const isWhitePiece = fromSquareData.Piece <= 6;
-        const promoteRank = isWhitePiece ? 8 : 1;
-        if (toRank === promoteRank) {
-            move += '=Q';
-        }
-    } else {
-        // Other pieces 
-        move = pieceType;
-        
-        if (isCapture) {
-            move += 'x';
-        }
-        move += toSquare;
-    }
-    
-    return move;
 }
 
 function getPieceType(pieceValue) {
@@ -676,11 +530,11 @@ function getSquareDataBySquare(squareNotation) {
 function clearHighlights() {
     const squares = document.querySelectorAll('.square');
     squares.forEach(square => {
-        square.classList.remove('dragging-from', 'possible-move', 'drag-over', 'check');
-        // Also remove dragging and check classes from any pieces
+        square.classList.remove('dragging-from', 'possible-move', 'drag-over');
+        // Also remove dragging class from any pieces, but preserve check highlighting
         const piece = square.querySelector('.piece');
         if (piece) {
-            piece.classList.remove('dragging', 'check');
+            piece.classList.remove('dragging');
         }
     });
 }
@@ -691,6 +545,31 @@ function clearSelection() {
         selectedSquare = null;
     }
     clearHighlights();
+}
+
+function highlightLastMove(fromSquare, toSquare) {
+    // Clear previous last-move highlighting
+    clearLastMoveHighlighting();
+    
+    // Store the last move squares
+    lastMoveSquares = { from: fromSquare, to: toSquare };
+    
+    // Find and highlight the squares
+    const squares = document.querySelectorAll('.square');
+    squares.forEach(square => {
+        const squareNotation = square.dataset.square;
+        if (squareNotation === fromSquare || squareNotation === toSquare) {
+            square.classList.add('last-move');
+        }
+    });
+}
+
+function clearLastMoveHighlighting() {
+    const squares = document.querySelectorAll('.square');
+    squares.forEach(square => {
+        square.classList.remove('last-move');
+    });
+    lastMoveSquares = null;
 }
 
 async function executeMoveFromGUI(move) {

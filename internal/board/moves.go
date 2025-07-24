@@ -206,7 +206,7 @@ func (b *Board) FindPieceForMove(move *moves.Move) (string, error) {
 					} else if move.Capture {
 						continue // Move was marked as a capture but square is empty
 					}
-					return b.Squares[rank][file].Name, nil
+					return GetSquareName(rank, file), nil
 				}
 			}
 		}
@@ -235,7 +235,7 @@ func (b *Board) MakeMove(notation string) error {
 	endRank, endFile := GetSquareCoords(move.To)
 
 	// If the from square isn't specified or contains wildcard (for piece moves and pawn captures), find it
-	if move.From == "" || strings.Contains(move.From, "*") {
+	if move.From == "" || strings.Contains(move.From, "*") || (move.From != "" && len(move.From) < 2) {
 		from, err := b.FindPieceForMove(move)
 		if err != nil {
 			return err
@@ -248,16 +248,25 @@ func (b *Board) MakeMove(notation string) error {
 	fromSquare := b.GetSquare(move.From)
 	toSquare := b.GetSquare(move.To)
 
-	if fromSquare == nil || toSquare == nil {
-		return fmt.Errorf("invalid square")
-	}
+	// Skip square validation for castling moves (they're handled specially)
+	if move.Castle == "" {
+		if fromSquare == nil || toSquare == nil {
+			if fromSquare == nil {
+				return fmt.Errorf("invalid from square: %s", move.From)
+			}
+			if toSquare == nil {
+				return fmt.Errorf("invalid to square: %s", move.To)
+			}
+			return fmt.Errorf("invalid square")
+		}
 
-	// Check that the piece belongs to the current player
-	if fromSquare.Piece == Empty {
-		return fmt.Errorf("invalid piece")
-	}
-	if b.WhiteToMove != (fromSquare.Piece < BP) {
-		return fmt.Errorf("wrong player's piece")
+		// Check that the piece belongs to the current player
+		if fromSquare.Piece == Empty {
+			return fmt.Errorf("invalid piece")
+		}
+		if b.WhiteToMove != (fromSquare.Piece < BP) {
+			return fmt.Errorf("wrong player's piece")
+		}
 	}
 
 	// Additional validation based on piece type and move type

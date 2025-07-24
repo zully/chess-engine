@@ -1,165 +1,214 @@
 # Chess Engine with Stockfish Integration
 
-A fully functional chess web application powered by the world-class **Stockfish chess engine**. Play chess in your browser with complete rule validation, powerful AI analysis, and all standard chess features.
+A modern web-based chess engine powered by **Stockfish 17.1** and built with **Go** and **JavaScript**. Features a clean, responsive UI with drag-and-drop gameplay, real-time position evaluation, and configurable engine strength.
 
-## Features
+## ✨ Features
 
-### 🎯 **Complete Chess Implementation**
-- **All piece movements**: Pawns, Knights, Bishops, Rooks, Queens, Kings with proper rules
-- **Special moves**: En passant, castling (kingside and queenside), pawn promotion (to any piece)
-- **Move validation**: Comprehensive rule enforcement including check/checkmate detection
-- **Drag-and-drop interface**: Intuitive click-and-drag piece movement
-- **Turn-based gameplay**: Proper alternating turns between White and Black
+### 🎮 **Interactive Gameplay**
+- **Drag-and-drop pieces** - Intuitive mouse controls
+- **Click-to-move** - Alternative input method  
+- **Move validation** - Prevents illegal moves with check validation
+- **Visual feedback** - Blue highlighting for last move, red highlighting for check
+- **Castling support** - Handles O-O and O-O-O notation
+- **En passant** - Full pawn capture rules
+- **Pawn promotion** - Automatic queen promotion
+- **Board flipping** - Fully functional "View as Black" perspective
 
-### 🤖 **Stockfish Engine Integration**
-- **World-class AI**: Powered by Stockfish, the strongest open-source chess engine
-- **UCI Protocol**: Full Universal Chess Interface implementation for engine communication
-- **Advanced Analysis**: Deep positional evaluation with precise move scoring
-- **Configurable Depth**: Adjustable search depth for different difficulty levels
-- **Real-time Feedback**: Live evaluation scores and search depth information
+### 🤖 **Stockfish Integration**  
+- **UCI Protocol** - Direct communication with Stockfish 17.1
+- **Configurable strength** - Descriptive ELO labels (Beginner to Grand Master)
+- **Real-time evaluation** - Live position analysis
+- **Engine vs Engine** - Watch Stockfish play itself
+- **Best move suggestions** - Get hints from the world's strongest engine
 
-### 🎮 **Modern Web Interface**
-- **Beautiful visual board**: Clean, responsive design that works on desktop and mobile
-- **Real-time updates**: Live game state with immediate feedback
-- **Move history**: Complete game record with standard algebraic notation
-- **Interactive controls**: Engine moves, auto-play mode, board flipping, game reset
-- **Status indicators**: Clear notifications for check, checkmate, draws, and game state
+### 📊 **Advanced Features**
+- **Position evaluation bar** - Visual advantage indicator
+- **Captured pieces tracker** - See material balance with piece values
+- **Move history** - Complete algebraic notation with proper disambiguation
+- **Last move highlighting** - Blue squares show the most recent move
+- **Check detection** - Red king highlighting and status messages
+- **Board flipping** - Play from either perspective with proper piece reorientation
+- **FEN support** - Standard position notation
+- **Draw detection** - Stalemate and repetition handling
 
-### ⚡ **Advanced Features**
-- **FEN Support**: Full Forsyth-Edwards Notation for position import/export
-- **Threefold repetition**: Automatic draw detection when positions repeat
-- **Position tracking**: Real-time monitoring of position frequency
-- **Board orientation**: Flip board to play from either perspective
-- **Game management**: Save/restore game state, move validation, error handling
+### 🎨 **Modern UI**
+- **Responsive design** - Works on desktop and mobile
+- **Lichess-style pieces** - High-quality SVG graphics
+- **Clean interface** - Minimal, focused design
+- **Real-time updates** - Instant feedback and validation
+- **Visual indicators** - Color-coded feedback for moves, checks, and captures
 
-## Project Structure
+## 🏗️ Architecture
 
-```
-chess-engine/
-├── cmd/
-│   └── main.go              # Web server and API endpoints
-├── internal/
-│   ├── board/
-│   │   ├── board.go         # Board representation and position tracking
-│   │   ├── coordinates.go   # Square coordinate utilities
-│   │   ├── moves.go         # Move execution and validation
-│   │   ├── piece_moves.go   # Individual piece movement rules
-│   │   └── fen.go           # FEN notation import/export
-│   ├── uci/
-│   │   └── uci.go           # UCI protocol implementation for Stockfish
-│   └── moves/
-│       └── moves.go         # Algebraic notation parsing
-├── stockfish/
-│   └── stockfish-macos-m1-apple-silicon  # Stockfish binary
-├── web/
-│   └── static/
-│       ├── chess.css        # Modern responsive styling
-│       └── chess.js         # Interactive frontend logic
-├── chess-stockfish.sh       # Quick start script
-├── go.mod
-└── go.sum
-```
+### **Frontend (Pure JavaScript)**
+- UCI move generation (e.g., `e2e4`, `a1e1`)
+- Drag-and-drop interaction
+- Real-time UI updates with visual feedback
+- SVG piece rendering with proper board orientation
+- Last move highlighting and check detection
 
-## Quick Start
+### **Backend (Go)**
+- **Simplified UCI-first design** - Reduced complexity after algebraic notation cleanup
+- UCI move validation and execution
+- Enhanced check validation logic
+- FEN position management  
+- Board state tracking with last move information
+- RESTful API endpoints
 
-### Prerequisites
-- Go 1.19 or later
-- Stockfish binary (automatically downloaded)
+### **Engine (Stockfish 17.1)**
+- Built from source in Docker
+- UCI protocol communication
+- Position evaluation
+- Best move calculation
 
-### Installation
+## 🚀 Quick Start
+
+### Docker Deployment (Recommended)
+
 ```bash
-git clone https://github.com/zully/chess-engine.git
-cd chess-engine
+# Build the container
+docker build -t chess-engine:latest .
+
+# Run the application
+docker run -p 8080:8080 chess-engine:latest
 ```
 
-### Start the Game
+### Local Development
+
 ```bash
-# Option 1: Use the quick start script (recommended)
-./chess-stockfish.sh
-
-# Option 2: Manual start
-go build -o chess-stockfish ./cmd/main.go
-./chess-stockfish
+# Build and run locally
+go build -o chess-engine ./cmd/main.go
+./chess-engine
 ```
 
-### Play Chess
-1. **Open your browser** to `http://localhost:8080`
-2. **Play moves** by clicking and dragging pieces or typing in algebraic notation
-3. **Challenge Stockfish** by clicking "Engine Move" 
-4. **Enable auto-play** to watch Stockfish play both sides
-5. **Flip the board** to play from Black's perspective
+**Access the game:** http://localhost:8080
 
-### Game Controls
-- **Manual Move**: Type moves like `e4`, `Nf3`, `O-O`, `exd5`, `a1=Q`
-- **Drag & Drop**: Click and drag pieces to move them
-- **Engine Move**: Let Stockfish make a move for the current player
-- **Auto Play**: Stockfish plays both sides automatically
-- **Flip Board**: Change perspective between White and Black
-- **Reset Game**: Start a new game
-- **Undo Move**: Take back the last move
+## 🎯 How to Play
 
-## Stockfish Integration
+1. **Make moves** by dragging pieces or clicking squares
+2. **Set engine strength** using descriptive labels (Beginner, Intermediate, Advanced, Expert, etc.)
+3. **Request engine moves** using the "Engine Move" button
+4. **Watch visual feedback** - blue squares show last move, red king shows check
+5. **Flip board** using "View as Black" button for different perspective
+6. **View evaluation** in the real-time evaluation bar
+7. **Track captures** in the material balance display
 
-This application uses **Stockfish 17**, the world's strongest open-source chess engine, providing:
+### Move Input Formats
+- **Drag & Drop** - Natural piece movement
+- **Click to Move** - Click source, then destination
+- **All moves use UCI notation internally** (e.g., e2e4, g1f3)
+- **Move history displays proper algebraic notation** (e.g., "Rae1", "Nbd2")
 
-- **Tactical Excellence**: Finds complex tactical combinations and threats
-- **Positional Understanding**: Deep evaluation of position structure and strategy
-- **Opening Knowledge**: Extensive opening book and theory
-- **Endgame Mastery**: Precise endgame technique and tablebases
-- **Configurable Strength**: Adjustable search depth from beginner to grandmaster level
+## 📡 API Endpoints
 
-### Engine Features
-- **Real-time Analysis**: Live position evaluation during play
-- **Move Suggestions**: Best move recommendations with scoring
-- **Depth Control**: Search depth from 1-15 moves ahead
-- **UCI Communication**: Standard Universal Chess Interface protocol
+### Game Management
+- `GET /api/state` - Current game state with last move and check status
+- `POST /api/move` - Make a move (UCI format)
+- `POST /api/engine` - Request engine move
+- `POST /api/undo` - Undo last move  
+- `POST /api/reset` - Reset game
 
-## API Endpoints
-
-The web server provides RESTful API endpoints:
-
-- `GET /api/state` - Get current game state with FEN position
-- `POST /api/move` - Make a player move
-- `POST /api/engine` - Request Stockfish engine move
-- `POST /api/reset` - Reset the game
-- `POST /api/undo` - Undo the last move
-
-## Technical Highlights
-
-- **Stockfish Integration**: Full UCI protocol implementation
-- **FEN Support**: Complete Forsyth-Edwards Notation handling  
-- **Zero external dependencies**: Pure Go implementation with native HTTP server
-- **Complete chess rules**: Including all special moves and draw conditions
-- **Modern web interface**: Responsive design with intuitive controls
-- **Real-time updates**: REST API with JSON communication
-
-## Development
-
-### Run Tests
-```bash
-go test ./...
+### Enhanced Game State Response
+```json
+{
+  "board": { /* board state */ },
+  "inCheck": true,
+  "isCheckmate": false,
+  "lastUCIMove": "e2e4",
+  "evaluation": 150,
+  "message": "White is in check!"
+}
 ```
 
-### Build
-```bash
-go build ./...
+### Move Request Format
+```json
+{
+  "move": "e2e4"  // UCI notation: fromSquare + toSquare
+}
 ```
 
-### Development Server
-```bash
-go run cmd/main.go
-# Server starts on http://localhost:8080
+### Engine Request Format  
+```json
+{
+  "depth": 6,     // Search depth (1-15)
+  "elo": 1800     // Engine strength (1350-2850)
+}
 ```
 
-## Browser Compatibility
+## 🔧 Technical Highlights
 
-- **Chrome/Safari/Firefox**: Full support for all features
-- **Mobile browsers**: Responsive design works on phones and tablets
+### **Recent Improvements (2024)**
+- ✅ **Last move highlighting** - Blue squares show recent moves
+- ✅ **Enhanced check detection** - Red king highlighting with status messages
+- ✅ **Code simplification** - Removed 120+ lines of unused algebraic notation code
+- ✅ **Fixed board flipping** - Pieces now properly reorient when viewing as Black
+- ✅ **Improved disambiguation** - Move history shows proper notation (e.g., "Rae1")
+- ✅ **Enhanced validation** - Better check detection and illegal move prevention
 
-## Stockfish Credits
+### **UCI Integration**
+- Native Stockfish communication
+- Simplified move parsing (no disambiguation needed)
+- Direct position evaluation
+- Engine strength control
 
-This application is powered by [Stockfish](https://stockfishchess.org/), developed by the Stockfish team. Stockfish is free software licensed under the GNU General Public License v3.
+### **Performance**
+- Efficient board representation
+- Fast move validation
+- Minimal memory footprint
+- Docker containerization
+- **Cleaned codebase** - Removed unused functions after UCI refactor
 
-## License
+### **Reliability**
+- Comprehensive move validation with check detection
+- Error handling and recovery
+- Draw detection
+- Position repetition tracking
 
-This project is open source and available under the MIT License.
+## 🏆 Engine Strength
+
+Configure Stockfish strength with descriptive labels:
+- **1350 Intermediate A** - Learning fundamentals
+- **1500 Intermediate B** - Developing strategy
+- **1600 Advanced A** - Tactical awareness
+- **1800 Advanced B** - Strategic thinking
+- **2000 Expert** - Club-level play
+- **2200 National Master** - Tournament strength
+- **2400 International Master** - Near-professional
+- **2500 Grand Master** - World-class play
+- **Full Strength** - Maximum engine power (~3500 ELO)
+
+## 🐳 Docker Details
+
+The application runs in a lightweight Ubuntu container with:
+- **Stockfish 17.1** - Built from official source (stable branch)
+- **Go 1.21** - Backend server
+- **Static assets** - Optimized web resources
+
+**Container size:** ~200MB  
+**Startup time:** <5 seconds
+
+## 🌟 Why This Implementation?
+
+### **UCI Throughout**
+- ✅ **Eliminates disambiguation complexity** (no more "Rae1" vs "Rfe1" parsing)
+- ✅ **Native Stockfish format** - direct engine communication  
+- ✅ **Simpler frontend** - just fromSquare + toSquare
+- ✅ **More reliable** - fewer parsing errors
+- ✅ **Single conversion point** - UCI → algebraic only for history
+- ✅ **Cleaner codebase** - Removed complex unused algebraic parsing
+
+### **Enhanced User Experience**
+- ✅ **Visual feedback** - Last move highlighting and check indicators
+- ✅ **Proper board flipping** - Pieces reorient correctly
+- ✅ **Intuitive controls** - Drag-and-drop with click alternatives
+- ✅ **Real-time validation** - Immediate feedback on illegal moves
+
+### **Stockfish Integration**
+- ✅ **World's strongest engine** - FIDE rating ~3500
+- ✅ **Configurable strength** - suitable for all skill levels
+- ✅ **Real-time evaluation** - instant position analysis
+- ✅ **Standard UCI protocol** - industry standard
+
+---
+
+**Built with ❤️ using Go, JavaScript, and Stockfish**
