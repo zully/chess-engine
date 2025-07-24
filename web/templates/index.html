@@ -43,6 +43,8 @@
                     </div>
                 </div>
 
+
+
                 <!-- Captured Pieces -->
                 <div class="captured-section">
                     <h3>Captured Pieces</h3>
@@ -98,7 +100,55 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Engine Analysis (below board) -->
+        <div class="engine-analysis-container">
+            <div class="engine-analysis-header">
+                <h3>Engine Analysis</h3>
+                <div class="analysis-controls">
+                    <label class="auto-analyze-label">
+                        <input type="checkbox" id="auto-analyze-checkbox" checked> Auto-analyze
+                    </label>
+                    <button id="analyze-btn" class="analyze-button">Analyze Now</button>
+                </div>
+            </div>
+            <div id="engine-lines" class="engine-lines">
+                <div class="engine-line-placeholder">
+                    Engine analysis will appear here...
+                </div>
+            </div>
+        </div>
     </div>
+    
+    <!-- Pawn Promotion Popup -->
+    <div id="promotion-modal" class="promotion-modal" style="display: none;">
+        <div class="promotion-modal-content">
+            <h3>Choose promotion piece:</h3>
+            <div class="promotion-pieces">
+                <div class="promotion-piece" data-piece="q">
+                    <img src="/static/pieces/Chess_qlt45.svg" alt="Queen" class="white-piece">
+                    <img src="/static/pieces/Chess_qdt45.svg" alt="Queen" class="black-piece">
+                    <span>Queen</span>
+                </div>
+                <div class="promotion-piece" data-piece="r">
+                    <img src="/static/pieces/Chess_rlt45.svg" alt="Rook" class="white-piece">
+                    <img src="/static/pieces/Chess_rdt45.svg" alt="Rook" class="black-piece">
+                    <span>Rook</span>
+                </div>
+                <div class="promotion-piece" data-piece="b">
+                    <img src="/static/pieces/Chess_blt45.svg" alt="Bishop" class="white-piece">
+                    <img src="/static/pieces/Chess_bdt45.svg" alt="Bishop" class="black-piece">
+                    <span>Bishop</span>
+                </div>
+                <div class="promotion-piece" data-piece="n">
+                    <img src="/static/pieces/Chess_nlt45.svg" alt="Knight" class="white-piece">
+                    <img src="/static/pieces/Chess_ndt45.svg" alt="Knight" class="black-piece">
+                    <span>Knight</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script src="/static/chess.js"></script>
 </body>
 </html> 

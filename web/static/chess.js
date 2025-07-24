@@ -45,6 +45,34 @@ function setupEventListeners() {
         document.getElementById('engine-white-checkbox').addEventListener('change', handleEngineCheckboxChange);
         document.getElementById('engine-black-checkbox').addEventListener('change', handleEngineCheckboxChange);
         
+        // Analyze button
+        document.getElementById('analyze-btn').addEventListener('click', requestEngineAnalysis);
+        
+        // Auto-analyze checkbox
+        document.getElementById('auto-analyze-checkbox').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                autoAnalyzePosition();
+            } else {
+                clearEngineAnalysis();
+            }
+        });
+        
+        // Promotion modal event listeners
+        const promotionModal = document.getElementById('promotion-modal');
+        promotionModal.addEventListener('click', (e) => {
+            // Close modal if clicking outside the content
+            if (e.target === promotionModal) {
+                hidePromotionModal();
+            }
+        });
+        
+        // Keyboard event listeners
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && pendingPromotionMove) {
+                hidePromotionModal();
+            }
+        });
+        
         // Set initial flip button text
         document.getElementById('flip-btn').textContent = 'View as Black';
     } catch (error) {
@@ -114,6 +142,125 @@ function requestEngineMove() {
     });
 }
 
+function requestEngineAnalysis() {
+    const analyzeBtn = document.getElementById('analyze-btn');
+    const engineLines = document.getElementById('engine-lines');
+    
+    // Disable button and show loading
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = 'Analyzing...';
+    engineLines.innerHTML = '<div class="engine-line-placeholder">Analyzing position...</div>';
+    engineLines.classList.add('loading');
+    
+    const requestData = {
+        depth: 10 // Use depth 10 for multi-line analysis
+    };
+
+    fetch('/api/analysis', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            engineLines.innerHTML = `<div class="engine-line-placeholder">Analysis error: ${data.error}</div>`;
+            engineLines.classList.remove('loading');
+        } else {
+            displayMultiLineAnalysis(data);
+        }
+    })
+    .catch(error => {
+        console.error('Error requesting engine analysis:', error);
+        engineLines.innerHTML = `<div class="engine-line-placeholder">Analysis failed: ${error.message}</div>`;
+        engineLines.classList.remove('loading');
+    })
+    .finally(() => {
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = 'Analyze Now';
+    });
+}
+
+function displayMultiLineAnalysis(analysisData) {
+    const engineLines = document.getElementById('engine-lines');
+    engineLines.classList.remove('loading');
+    
+    if (!analysisData.lines || analysisData.lines.length === 0) {
+        engineLines.innerHTML = '<div class="engine-line-placeholder">No analysis lines found</div>';
+        return;
+    }
+    
+    let html = '';
+    analysisData.lines.forEach((line, index) => {
+        const scoreText = line.score > 0 ? `+${line.score}` : line.score;
+        const scoreClass = line.score > 0 ? 'positive' : (line.score < 0 ? 'negative' : 'neutral');
+        
+        // Format moves display
+        let movesDisplay = '';
+        if (line.pvAlgebraic && line.pvAlgebraic.length > 0) {
+            const moves = line.pvAlgebraic.slice(0, 10); // Show first 10 moves
+            for (let i = 0; i < moves.length; i += 2) {
+                const moveNum = Math.floor(i / 2) + 1;
+                const whiteMove = moves[i];
+                const blackMove = moves[i + 1];
+                
+                movesDisplay += `${moveNum}. ${whiteMove}`;
+                if (blackMove) {
+                    movesDisplay += ` ${blackMove} `;
+                }
+            }
+            if (line.pvAlgebraic.length > 10) {
+                movesDisplay += '...';
+            }
+        }
+        
+        // First move evaluation
+        const firstMoveEval = line.firstMoveEval !== undefined ? line.firstMoveEval : line.score;
+        const firstMoveEvalText = firstMoveEval > 0 ? `+${firstMoveEval}` : firstMoveEval;
+        
+        html += `
+            <div class="engine-line">
+                <div class="engine-line-header">
+                    <span class="engine-line-number">Line ${line.lineNumber}</span>
+                    <span class="engine-line-score ${scoreClass}">${scoreText} cp</span>
+                </div>
+                <div class="engine-line-moves">${movesDisplay || 'No moves available'}</div>
+                <div class="engine-line-info">
+                    <span>Depth: ${line.depth}</span>
+                    <span>After first move: ${firstMoveEvalText} cp</span>
+                </div>
+            </div>
+        `;
+    });
+    
+    engineLines.innerHTML = html;
+}
+
+function clearEngineAnalysis() {
+    const engineLines = document.getElementById('engine-lines');
+    if (engineLines) {
+        engineLines.innerHTML = '<div class="engine-line-placeholder">Engine analysis will appear here...</div>';
+        engineLines.classList.remove('loading');
+    }
+}
+
+function shouldAutoAnalyze() {
+    const autoAnalyzeCheckbox = document.getElementById('auto-analyze-checkbox');
+    return autoAnalyzeCheckbox && autoAnalyzeCheckbox.checked;
+}
+
+function autoAnalyzePosition() {
+    if (shouldAutoAnalyze() && !gameState.isCheckmate) {
+        // Allow analysis even if there's a false draw/threefold repetition
+        // Only skip if it's actual checkmate
+        setTimeout(() => {
+            requestEngineAnalysis();
+        }, 500);
+    }
+}
+
 function undoMove() {
     fetch('/api/undo', {
         method: 'POST'
@@ -170,6 +317,13 @@ function updateDisplay() {
     
     // Check if we should make an automatic engine move
     checkForAutomaticEngineMove();
+    
+    // Handle engine analysis
+    if (shouldAutoAnalyze()) {
+        autoAnalyzePosition();
+    } else {
+        clearEngineAnalysis();
+    }
 }
 
 function highlightLastMoveFromGameState() {
@@ -404,7 +558,14 @@ function handleDrop(e) {
         return;
     }
     
-    // Construct proper algebraic move
+    // Check if this is a promotion move
+    if (isPromotionMove(fromSquare, toSquare)) {
+        handleDragEnd(e);
+        showPromotionModal(fromSquare, toSquare);
+        return;
+    }
+    
+    // Construct regular move
     const move = constructUCIMove(fromSquare, toSquare);
     if (move) {
         makeMove(move);
@@ -444,6 +605,12 @@ function handleSquareClick(event) {
         selectedSquare = null;
         
         if (fromSquare !== toSquare) {
+            // Check if this is a promotion move
+            if (isPromotionMove(fromSquare, toSquare)) {
+                showPromotionModal(fromSquare, toSquare);
+                return;
+            }
+            
             // Try to make the move using algebraic notation
             const move = constructUCIMove(fromSquare, toSquare);
             if (move) {
@@ -453,7 +620,7 @@ function handleSquareClick(event) {
     }
 }
 
-function constructUCIMove(fromSquare, toSquare) {
+function constructUCIMove(fromSquare, toSquare, promotionPiece = null) {
     // Get piece information from the from square
     const fromSquareData = getSquareDataBySquare(fromSquare);
     if (!fromSquareData || fromSquareData.Piece === 0) {
@@ -481,12 +648,92 @@ function constructUCIMove(fromSquare, toSquare) {
         const promotionRank = isWhitePiece ? 8 : 1;
         
         if (toRank === promotionRank) {
-            // For now, always promote to queen (can be enhanced later)
-            uciMove += 'q';
+            // Use the provided promotion piece, or return null to indicate promotion needed
+            if (promotionPiece) {
+                uciMove += promotionPiece;
+            } else {
+                return null; // Indicates promotion choice needed
+            }
         }
     }
     
     return uciMove;
+}
+
+// Check if a move would result in pawn promotion
+function isPromotionMove(fromSquare, toSquare) {
+    const fromSquareData = getSquareDataBySquare(fromSquare);
+    if (!fromSquareData || fromSquareData.Piece === 0) {
+        return false;
+    }
+    
+    const pieceType = getPieceType(fromSquareData.Piece);
+    if (pieceType !== 'P') {
+        return false;
+    }
+    
+    const toRank = parseInt(toSquare[1]);
+    const isWhitePiece = fromSquareData.Piece < 7;
+    const promotionRank = isWhitePiece ? 8 : 1;
+    
+    const isPromotion = toRank === promotionRank;
+    console.log('Promotion check:', {fromSquare, toSquare, pieceType, toRank, isWhitePiece, promotionRank, isPromotion});
+    
+    return isPromotion;
+}
+
+// Global variables for promotion handling
+let pendingPromotionMove = null;
+
+// Show promotion modal
+function showPromotionModal(fromSquare, toSquare) {
+    console.log('showPromotionModal called:', {fromSquare, toSquare});
+    const modal = document.getElementById('promotion-modal');
+    const fromSquareData = getSquareDataBySquare(fromSquare);
+    const isWhitePiece = fromSquareData.Piece < 7;
+    
+    // Store the pending move
+    pendingPromotionMove = { from: fromSquare, to: toSquare };
+    
+    // Show appropriate piece colors
+    const pieces = modal.querySelectorAll('.promotion-piece');
+    pieces.forEach(piece => {
+        if (isWhitePiece) {
+            piece.classList.remove('show-black');
+        } else {
+            piece.classList.add('show-black');
+        }
+        
+        // Add click event listener
+        piece.onclick = () => handlePromotionChoice(piece.dataset.piece);
+    });
+    
+    modal.style.display = 'flex';
+    console.log('Promotion modal should now be visible');
+}
+
+// Hide promotion modal
+function hidePromotionModal() {
+    const modal = document.getElementById('promotion-modal');
+    modal.style.display = 'none';
+    pendingPromotionMove = null;
+    
+    // Clear any selections
+    clearSelection();
+}
+
+// Handle promotion piece selection
+function handlePromotionChoice(promotionPiece) {
+    if (!pendingPromotionMove) return;
+    
+    const { from, to } = pendingPromotionMove;
+    const move = constructUCIMove(from, to, promotionPiece);
+    
+    hidePromotionModal();
+    
+    if (move) {
+        makeMove(move);
+    }
 }
 
 function canMovePiece(square) {

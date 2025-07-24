@@ -19,12 +19,24 @@ type Engine struct {
 
 // EngineMove represents a move from the engine
 type EngineMove struct {
-	From       string
-	To         string
-	Score      int
-	Depth      int
-	UCI        string // Store the original UCI format
-	Evaluation int    // Position evaluation in centipawns (positive = better for white)
+	From        string
+	To          string
+	Score       int
+	Depth       int
+	UCI         string   // Store the original UCI format
+	Evaluation  int      // Position evaluation in centipawns (positive = better for white)
+	PV          []string // Principal variation (sequence of best moves in UCI format)
+	PVAlgebraic []string // Principal variation in algebraic notation
+}
+
+// MultiPVLine represents one line of analysis in multi-pv mode
+type MultiPVLine struct {
+	LineNumber    int      // Which line this is (1, 2, 3, etc.)
+	Score         int      // Score for this line
+	Depth         int      // Search depth
+	PV            []string // Principal variation in UCI format
+	PVAlgebraic   []string // Principal variation in algebraic notation
+	FirstMoveEval int      // Evaluation after playing the first move of this line
 }
 
 // NewEngine creates a new UCI engine instance
@@ -145,12 +157,13 @@ func (e *Engine) GetBestMove(fen string, depth int) (*EngineMove, error) {
 
 	var bestMove *EngineMove
 	var lastScore int
+	var lastPV []string
 
 	// Read the search output
 	for e.stdout.Scan() {
 		line := strings.TrimSpace(e.stdout.Text())
 
-		// Parse info lines for score information
+		// Parse info lines for score information and principal variation
 		if strings.HasPrefix(line, "info") {
 			parts := strings.Fields(line)
 			for i, part := range parts {
@@ -160,6 +173,12 @@ func (e *Engine) GetBestMove(fen string, depth int) (*EngineMove, error) {
 							lastScore = score
 						}
 					}
+				}
+				// Capture principal variation
+				if part == "pv" && i+1 < len(parts) {
+					// Everything after "pv" is the principal variation
+					lastPV = parts[i+1:]
+					break
 				}
 			}
 		}
@@ -193,6 +212,7 @@ func (e *Engine) GetBestMove(fen string, depth int) (*EngineMove, error) {
 	bestMove.Score = lastScore
 	bestMove.Depth = depth
 	bestMove.Evaluation = lastScore // Use the search score as evaluation
+	bestMove.PV = lastPV
 
 	// Get additional position evaluation if available
 	if eval, err := e.GetEvaluation(fen); err == nil {
@@ -350,6 +370,102 @@ func (e *Engine) GetEvaluation(fen string) (int, error) {
 	}
 
 	return lastScore, nil
+}
+
+// GetMultiPVAnalysis gets multiple principal variations from the engine
+func (e *Engine) GetMultiPVAnalysis(fen string, depth int, numLines int) ([]MultiPVLine, error) {
+	if !e.ready {
+		return nil, fmt.Errorf("engine not ready")
+	}
+
+	// Set MultiPV option
+	if err := e.SetOption("MultiPV", fmt.Sprintf("%d", numLines)); err != nil {
+		return nil, fmt.Errorf("failed to set MultiPV: %v", err)
+	}
+
+	// Set the position
+	if err := e.sendCommand(fmt.Sprintf("position fen %s", fen)); err != nil {
+		return nil, err
+	}
+
+	// Start the search
+	command := "go"
+	if depth > 0 {
+		command += fmt.Sprintf(" depth %d", depth)
+	}
+	if err := e.sendCommand(command); err != nil {
+		return nil, err
+	}
+
+	lines := make(map[int]*MultiPVLine)
+	var maxDepth int
+
+	// Read the search output
+	for e.stdout.Scan() {
+		line := strings.TrimSpace(e.stdout.Text())
+
+		// Parse info lines for multiple PV information
+		if strings.HasPrefix(line, "info") {
+			parts := strings.Fields(line)
+			var currentLine *MultiPVLine
+
+			for i, part := range parts {
+				// Find which PV line this is
+				if part == "multipv" && i+1 < len(parts) {
+					lineNum, err := strconv.Atoi(parts[i+1])
+					if err == nil {
+						if lines[lineNum] == nil {
+							lines[lineNum] = &MultiPVLine{LineNumber: lineNum}
+						}
+						currentLine = lines[lineNum]
+					}
+				}
+
+				// Get depth
+				if part == "depth" && i+1 < len(parts) && currentLine != nil {
+					if depth, err := strconv.Atoi(parts[i+1]); err == nil {
+						currentLine.Depth = depth
+						if depth > maxDepth {
+							maxDepth = depth
+						}
+					}
+				}
+
+				// Get score
+				if part == "score" && i+2 < len(parts) && currentLine != nil {
+					if parts[i+1] == "cp" {
+						if score, err := strconv.Atoi(parts[i+2]); err == nil {
+							currentLine.Score = score
+						}
+					}
+				}
+
+				// Get principal variation
+				if part == "pv" && i+1 < len(parts) && currentLine != nil {
+					currentLine.PV = parts[i+1:]
+					break
+				}
+			}
+		}
+
+		// Break when we get the best move (search is complete)
+		if strings.HasPrefix(line, "bestmove") {
+			break
+		}
+	}
+
+	// Convert map to sorted slice
+	result := make([]MultiPVLine, 0, len(lines))
+	for i := 1; i <= numLines; i++ {
+		if line, exists := lines[i]; exists {
+			result = append(result, *line)
+		}
+	}
+
+	// Reset MultiPV to 1 for other operations
+	e.SetOption("MultiPV", "1")
+
+	return result, nil
 }
 
 // GetEngineInfo gets the Stockfish engine information including version

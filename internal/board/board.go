@@ -203,33 +203,41 @@ func (b *Board) IsSquareEmpty(rank, file int) bool {
 // GetPositionHash generates a hash of the current position for repetition detection
 // Hash includes: piece positions, whose turn, castling rights, en passant target
 func (b *Board) GetPositionHash() uint64 {
-	var hash uint64 = 0
+	var hash uint64 = 14695981039346656037 // FNV-1a offset basis
 
-	// Hash piece positions (use a simple polynomial rolling hash)
-	const prime = 31
+	// Hash piece positions using FNV-1a algorithm (better distribution)
+	const fnvPrime uint64 = 1099511628211
 	for rank := 0; rank < 8; rank++ {
 		for file := 0; file < 8; file++ {
 			piece := b.GetPiece(rank, file)
-			// Each square contributes: piece * prime^(position)
-			position := uint64(rank*8 + file)
-			hash = hash*prime + uint64(piece)*prime + position
+			squareIndex := uint64(rank*8 + file)
+
+			// Combine piece and square index into a single value
+			value := (uint64(piece) << 8) | squareIndex
+
+			// FNV-1a hash
+			hash ^= value
+			hash *= fnvPrime
 		}
 	}
 
 	// Include whose turn it is
+	turnValue := uint64(0)
 	if b.WhiteToMove {
-		hash = hash*prime + 1
-	} else {
-		hash = hash*prime + 2
+		turnValue = 1
 	}
+	hash ^= turnValue
+	hash *= fnvPrime
 
 	// Include castling rights
-	hash = hash*prime + uint64(b.CastlingRights)
+	hash ^= uint64(b.CastlingRights)
+	hash *= fnvPrime
 
 	// Include en passant target
 	if b.EnPassant != "" {
 		for _, c := range b.EnPassant {
-			hash = hash*prime + uint64(c)
+			hash ^= uint64(c)
+			hash *= fnvPrime
 		}
 	}
 

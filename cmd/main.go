@@ -73,6 +73,7 @@ func main() {
 	http.HandleFunc("/api/state", getGameState)
 	http.HandleFunc("/api/move", makeMove)
 	http.HandleFunc("/api/engine", engineMove)
+	http.HandleFunc("/api/analysis", getEngineAnalysis)
 	http.HandleFunc("/api/undo", undoMove)
 	http.HandleFunc("/api/reset", resetGame)
 
@@ -184,6 +185,151 @@ func makeMove(w http.ResponseWriter, r *http.Request) {
 	state := createCompleteGameState(gameBoard, message, evaluation)
 	state.LastUCIMove = uciMove // Add the last UCI move to the response
 	json.NewEncoder(w).Encode(state)
+}
+
+func getEngineAnalysis(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check if Stockfish engine is available
+	if stockfishEngine == nil {
+		response := map[string]interface{}{
+			"error": "Stockfish engine not available",
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	var req EngineRequest
+	json.NewDecoder(r.Body).Decode(&req)
+
+	// Set depth (default to 10 for analysis)
+	depth := 10
+	if req.Depth > 0 && req.Depth <= 20 {
+		depth = req.Depth
+	}
+
+	// Get current position
+	currentFEN := gameBoard.ToFEN()
+
+	// Get multiple principal variations
+	multiPVLines, err := stockfishEngine.GetMultiPVAnalysis(currentFEN, depth, 3)
+	if err != nil {
+		response := map[string]interface{}{
+			"error": fmt.Sprintf("Analysis error: %v", err),
+		}
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Process each line
+	analysisLines := make([]map[string]interface{}, len(multiPVLines))
+	for i, line := range multiPVLines {
+		// Convert UCI moves to algebraic notation
+		algebraicMoves := make([]string, len(line.PV))
+		for j, uciMove := range line.PV {
+			algebraicMoves[j] = convertUCIToAlgebraic(uciMove, gameBoard, j == 0)
+		}
+
+		// Get evaluation after first move if PV has moves
+		firstMoveEval := line.Score
+		if len(line.PV) > 0 {
+			if eval, err := getEvaluationAfterMove(gameBoard, line.PV[0]); err == nil {
+				firstMoveEval = eval
+			}
+		}
+
+		analysisLines[i] = map[string]interface{}{
+			"lineNumber":    line.LineNumber,
+			"score":         line.Score,
+			"depth":         line.Depth,
+			"pv":            line.PV,
+			"pvAlgebraic":   algebraicMoves,
+			"firstMoveEval": firstMoveEval,
+			"pvLength":      len(line.PV),
+		}
+	}
+
+	response := map[string]interface{}{
+		"lines":   analysisLines,
+		"depth":   depth,
+		"message": fmt.Sprintf("Multi-PV analysis complete (depth %d, %d lines)", depth, len(multiPVLines)),
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+// convertUCIToAlgebraic converts a UCI move to algebraic notation (simplified)
+func convertUCIToAlgebraic(uciMove string, gameBoard *board.Board, isFirstMove bool) string {
+	if len(uciMove) < 4 {
+		return uciMove
+	}
+
+	// Simple algebraic conversion without creating board copies
+	// This prevents additional position recording that was causing false repetitions
+
+	// Handle castling moves
+	if uciMove == "e1g1" || uciMove == "e8g8" {
+		return "O-O"
+	}
+	if uciMove == "e1c1" || uciMove == "e8c8" {
+		return "O-O-O"
+	}
+
+	// For other moves, return a simplified format
+	toSquare := uciMove[2:4]
+
+	// Check if there's a piece on the destination (capture)
+	toRank, toFile := board.GetSquareCoords(toSquare)
+	if toRank >= 0 && toRank <= 7 && toFile >= 0 && toFile <= 7 {
+		targetPiece := gameBoard.GetPiece(toRank, toFile)
+		if targetPiece != board.Empty {
+			// It's a capture - add 'x'
+			result := toSquare
+			if len(uciMove) == 5 {
+				result += "=" + strings.ToUpper(string(uciMove[4]))
+			}
+			return result
+		}
+	}
+
+	// Regular move
+	result := toSquare
+	if len(uciMove) == 5 {
+		result += "=" + strings.ToUpper(string(uciMove[4]))
+	}
+	return result
+}
+
+// getEvaluationAfterMove gets the position evaluation after making a move
+func getEvaluationAfterMove(board *board.Board, uciMove string) (int, error) {
+	if stockfishEngine == nil {
+		return 0, fmt.Errorf("engine not available")
+	}
+
+	// Create FEN directly without making the move on a board copy
+	// This avoids polluting the position history
+	currentFEN := board.ToFEN()
+
+	// Use Stockfish to evaluate the position after the move
+	// Set the current position and get the evaluation after the move
+	if err := stockfishEngine.SetPosition(currentFEN); err != nil {
+		return 0, err
+	}
+
+	// Get the current position evaluation
+	// This avoids board copy pollution while still providing evaluation data
+	currentEval, err := stockfishEngine.GetEvaluation(currentFEN)
+	if err != nil {
+		return 0, err
+	}
+
+	// Return negative since we're looking from opponent's perspective
+	return -currentEval, nil
 }
 
 // isValidUCIMove validates basic UCI move format
@@ -327,9 +473,20 @@ func engineMove(w http.ResponseWriter, r *http.Request) {
 	state.DrawReason = drawReason
 	state.GameOver = state.IsCheckmate || isDraw
 
-	// Set message with engine evaluation
-	baseMessage := fmt.Sprintf("Stockfish played %s (depth: %d, score: %d)",
-		moveNotation, bestMove.Depth, bestMove.Score)
+	// Set message with engine evaluation and PV info
+	pvInfo := ""
+	if len(bestMove.PV) > 1 {
+		pvLen := len(bestMove.PV)
+		if pvLen > 3 {
+			pvLen = 3
+		}
+		pvInfo = fmt.Sprintf(", PV: %s", strings.Join(bestMove.PV[:pvLen], " "))
+		if len(bestMove.PV) > 3 {
+			pvInfo += "..."
+		}
+	}
+	baseMessage := fmt.Sprintf("Stockfish played %s (depth: %d, score: %d%s)",
+		moveNotation, bestMove.Depth, bestMove.Score, pvInfo)
 
 	if isDraw {
 		baseMessage += fmt.Sprintf(" - Draw! %s", drawReason)
