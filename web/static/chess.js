@@ -163,7 +163,9 @@ function requestEngineAnalysis() {
         },
         body: JSON.stringify(requestData)
     })
-    .then(response => response.json())
+    .then(response => {
+        return response.json();
+    })
     .then(data => {
         if (data.error) {
             engineLines.innerHTML = `<div class="engine-line-placeholder">Analysis error: ${data.error}</div>`;
@@ -188,7 +190,7 @@ function displayMultiLineAnalysis(analysisData) {
     engineLines.classList.remove('loading');
     
     if (!analysisData.lines || analysisData.lines.length === 0) {
-        engineLines.innerHTML = '<div class="engine-line-placeholder">No analysis lines found</div>';
+        engineLines.innerHTML = '<div class="engine-line-placeholder">No analysis available</div>';
         return;
     }
     
@@ -197,40 +199,31 @@ function displayMultiLineAnalysis(analysisData) {
         const scoreText = line.score > 0 ? `+${line.score}` : line.score;
         const scoreClass = line.score > 0 ? 'positive' : (line.score < 0 ? 'negative' : 'neutral');
         
-        // Format moves display
+        // Format moves display - show first 8 moves only
         let movesDisplay = '';
         if (line.pvAlgebraic && line.pvAlgebraic.length > 0) {
-            const moves = line.pvAlgebraic.slice(0, 10); // Show first 10 moves
+            const moves = line.pvAlgebraic.slice(0, 8);
             for (let i = 0; i < moves.length; i += 2) {
                 const moveNum = Math.floor(i / 2) + 1;
                 const whiteMove = moves[i];
                 const blackMove = moves[i + 1];
                 
-                movesDisplay += `${moveNum}. ${whiteMove}`;
+                movesDisplay += `${moveNum}.${whiteMove}`;
                 if (blackMove) {
                     movesDisplay += ` ${blackMove} `;
+                } else {
+                    movesDisplay += ' ';
                 }
             }
-            if (line.pvAlgebraic.length > 10) {
+            if (line.pvAlgebraic.length > 8) {
                 movesDisplay += '...';
             }
         }
         
-        // First move evaluation
-        const firstMoveEval = line.firstMoveEval !== undefined ? line.firstMoveEval : line.score;
-        const firstMoveEvalText = firstMoveEval > 0 ? `+${firstMoveEval}` : firstMoveEval;
-        
         html += `
             <div class="engine-line">
-                <div class="engine-line-header">
-                    <span class="engine-line-number">Line ${line.lineNumber}</span>
-                    <span class="engine-line-score ${scoreClass}">${scoreText} cp</span>
-                </div>
-                <div class="engine-line-moves">${movesDisplay || 'No moves available'}</div>
-                <div class="engine-line-info">
-                    <span>Depth: ${line.depth}</span>
-                    <span>After first move: ${firstMoveEvalText} cp</span>
-                </div>
+                <span class="engine-line-score ${scoreClass}">${scoreText}</span>
+                <span class="engine-line-moves">${movesDisplay || 'No moves'}</span>
             </div>
         `;
     });
@@ -677,7 +670,6 @@ function isPromotionMove(fromSquare, toSquare) {
     const promotionRank = isWhitePiece ? 8 : 1;
     
     const isPromotion = toRank === promotionRank;
-    console.log('Promotion check:', {fromSquare, toSquare, pieceType, toRank, isWhitePiece, promotionRank, isPromotion});
     
     return isPromotion;
 }
@@ -687,7 +679,6 @@ let pendingPromotionMove = null;
 
 // Show promotion modal
 function showPromotionModal(fromSquare, toSquare) {
-    console.log('showPromotionModal called:', {fromSquare, toSquare});
     const modal = document.getElementById('promotion-modal');
     const fromSquareData = getSquareDataBySquare(fromSquare);
     const isWhitePiece = fromSquareData.Piece < 7;
@@ -709,7 +700,6 @@ function showPromotionModal(fromSquare, toSquare) {
     });
     
     modal.style.display = 'flex';
-    console.log('Promotion modal should now be visible');
 }
 
 // Hide promotion modal

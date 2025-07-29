@@ -153,11 +153,34 @@ func (s *Server) GetEngineAnalysis(w http.ResponseWriter, r *http.Request) {
 	// Get multiple principal variations
 	multiPVLines, err := s.StockfishEngine.GetMultiPVAnalysis(currentFEN, depth, 3)
 	if err != nil {
-		response := map[string]interface{}{
-			"error": fmt.Sprintf("Analysis error: %v", err),
+		// Check if it's a communication failure and try to recover
+		if strings.Contains(err.Error(), "short write") ||
+			strings.Contains(err.Error(), "broken pipe") ||
+			strings.Contains(err.Error(), "engine process") {
+
+			// Try to restart the engine
+			if restartErr := s.StockfishEngine.Restart("/usr/local/bin/stockfish"); restartErr == nil {
+				// Retry the analysis after restart
+				multiPVLines, err = s.StockfishEngine.GetMultiPVAnalysis(currentFEN, depth, 3)
+			}
 		}
-		json.NewEncoder(w).Encode(response)
-		return
+
+		if err != nil {
+			var response map[string]interface{}
+			if strings.Contains(err.Error(), "short write") ||
+				strings.Contains(err.Error(), "broken pipe") ||
+				strings.Contains(err.Error(), "engine process") {
+				response = map[string]interface{}{
+					"error": "Engine communication failed - trying to recover automatically",
+				}
+			} else {
+				response = map[string]interface{}{
+					"error": fmt.Sprintf("Analysis failed: %v", err),
+				}
+			}
+			json.NewEncoder(w).Encode(response)
+			return
+		}
 	}
 
 	// Process each line
@@ -254,26 +277,39 @@ func (s *Server) EngineMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get best move from Stockfish
+	// Get the best move using Stockfish
 	currentFEN := s.GameBoard.ToFEN()
-
-	bestMove, err := s.StockfishEngine.GetBestMove(currentFEN, depth)
+	engineMove, err := s.StockfishEngine.GetBestMove(currentFEN, depth)
 	if err != nil {
-		state.Error = fmt.Sprintf("Engine error: %v", err)
-		json.NewEncoder(w).Encode(state)
-		return
+		// Check if it's a communication failure and try to recover
+		if strings.Contains(err.Error(), "short write") ||
+			strings.Contains(err.Error(), "broken pipe") ||
+			strings.Contains(err.Error(), "engine process") {
+
+			// Try to restart the engine
+			if restartErr := s.StockfishEngine.Restart("/usr/local/bin/stockfish"); restartErr == nil {
+				// Retry the move after restart
+				engineMove, err = s.StockfishEngine.GetBestMove(currentFEN, depth)
+			}
+		}
+
+		if err != nil {
+			state.Error = fmt.Sprintf("Engine move failed: %v", err)
+			json.NewEncoder(w).Encode(state)
+			return
+		}
 	}
 
-	if bestMove == nil {
+	if engineMove == nil {
 		state.Error = "No move received from engine"
 		json.NewEncoder(w).Encode(state)
 		return
 	}
 
 	// Execute the move using UCI notation directly
-	err = s.GameBoard.MakeUCIMove(bestMove.UCI)
+	err = s.GameBoard.MakeUCIMove(engineMove.UCI)
 	if err != nil {
-		state.Error = fmt.Sprintf("Failed to execute engine move %s: %v", bestMove.UCI, err)
+		state.Error = fmt.Sprintf("Failed to execute engine move %s: %v", engineMove.UCI, err)
 		json.NewEncoder(w).Encode(state)
 		return
 	}
@@ -283,7 +319,7 @@ func (s *Server) EngineMove(w http.ResponseWriter, r *http.Request) {
 	if len(s.GameBoard.MovesPlayed) > 0 {
 		moveNotation = s.GameBoard.MovesPlayed[len(s.GameBoard.MovesPlayed)-1]
 	} else {
-		moveNotation = bestMove.UCI // Fallback to UCI if no algebraic notation available
+		moveNotation = engineMove.UCI // Fallback to UCI if no algebraic notation available
 	}
 
 	// Update game state
@@ -307,18 +343,18 @@ func (s *Server) EngineMove(w http.ResponseWriter, r *http.Request) {
 
 	// Set message with engine evaluation and PV info
 	pvInfo := ""
-	if len(bestMove.PV) > 1 {
-		pvLen := len(bestMove.PV)
+	if len(engineMove.PV) > 1 {
+		pvLen := len(engineMove.PV)
 		if pvLen > 3 {
 			pvLen = 3
 		}
-		pvInfo = fmt.Sprintf(", PV: %s", strings.Join(bestMove.PV[:pvLen], " "))
-		if len(bestMove.PV) > 3 {
+		pvInfo = fmt.Sprintf(", PV: %s", strings.Join(engineMove.PV[:pvLen], " "))
+		if len(engineMove.PV) > 3 {
 			pvInfo += "..."
 		}
 	}
 	baseMessage := fmt.Sprintf("Stockfish played %s (depth: %d, score: %d%s)",
-		moveNotation, bestMove.Depth, bestMove.Score, pvInfo)
+		moveNotation, engineMove.Depth, engineMove.Score, pvInfo)
 
 	if isDraw {
 		baseMessage += fmt.Sprintf(" - Draw! %s", drawReason)
@@ -337,10 +373,10 @@ func (s *Server) EngineMove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create complete game state with evaluation
-	state = game.CreateCompleteGameState(s.GameBoard, baseMessage, bestMove.Evaluation, s.StockfishEngine)
+	state = game.CreateCompleteGameState(s.GameBoard, baseMessage, engineMove.Evaluation, s.StockfishEngine)
 
 	// Add the UCI move for last move highlighting
-	state.LastUCIMove = bestMove.UCI
+	state.LastUCIMove = engineMove.UCI
 
 	json.NewEncoder(w).Encode(state)
 }
